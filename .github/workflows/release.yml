@@ -60,6 +60,7 @@ jobs:
           cd ./publish/linux-arm64-sc
           tar -czf ../PhiraMpServer-linux-arm64-sc.tar.gz *
       
+      # ========== Windows Builds ==========
       # Windows AMD64 - Framework Dependent
       - name: Build Windows AMD64 (Framework Dependent)
         run: |
@@ -67,10 +68,55 @@ jobs:
           cd ./publish/win-x64-fd
           zip -r ../PhiraMpServer-win-x64-fd.zip *
       
-      # Linux AMD64 - AOT (Native)
-      - name: Build Linux AMD64 AOT
+      # Windows AMD64 - Self Contained
+      - name: Build Windows AMD64 (Self Contained)
         run: |
-          dotnet publish -c Release -r linux-x64 -p:PublishAot=true -o ./publish/linux-x64-aot
+          dotnet publish -c Release -r win-x64 --self-contained true -o ./publish/win-x64-sc
+          cd ./publish/win-x64-sc
+          zip -r ../PhiraMpServer-win-x64-sc.zip *
+      
+      # Windows ARM64 - Framework Dependent
+      - name: Build Windows ARM64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r win-arm64 --self-contained false -o ./publish/win-arm64-fd
+          cd ./publish/win-arm64-fd
+          zip -r ../PhiraMpServer-win-arm64-fd.zip *
+      
+      # Windows ARM64 - Self Contained
+      - name: Build Windows ARM64 (Self Contained)
+        run: |
+          dotnet publish -c Release -r win-arm64 --self-contained true -o ./publish/win-arm64-sc
+          cd ./publish/win-arm64-sc
+          zip -r ../PhiraMpServer-win-arm64-sc.zip *
+      
+      # ========== macOS Builds ==========
+      # macOS AMD64 - Framework Dependent
+      - name: Build macOS AMD64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r osx-x64 --self-contained false -o ./publish/osx-x64-fd
+          cd ./publish/osx-x64-fd
+          tar -czf ../PhiraMpServer-osx-x64-fd.tar.gz *
+      
+      # macOS AMD64 - Self Contained
+      - name: Build macOS AMD64 (Self Contained)
+        run: |
+          dotnet publish -c Release -r osx-x64 --self-contained true -o ./publish/osx-x64-sc
+          cd ./publish/osx-x64-sc
+          tar -czf ../PhiraMpServer-osx-x64-sc.tar.gz *
+      
+      # macOS ARM64 - Framework Dependent
+      - name: Build macOS ARM64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r osx-arm64 --self-contained false -o ./publish/osx-arm64-fd
+          cd ./publish/osx-arm64-fd
+          tar -czf ../PhiraMpServer-osx-arm64-fd.tar.gz *
+      
+      # macOS ARM64 - Self Contained
+      - name: Build macOS ARM64 (Self Contained)
+        run: |
+          dotnet publish -c Release -r osx-arm64 --self-contained true -o ./publish/osx-arm64-sc
+          cd ./publish/osx-arm64-sc
+          tar -czf ../PhiraMpServer-osx-arm64-sc.tar.gz *
       
       # Delete old latest release and tag
       - name: Delete old latest release
