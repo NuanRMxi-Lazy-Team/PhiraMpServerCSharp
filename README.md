@@ -12,3 +12,4 @@ PhiraMpServerCSharp 是一个用 C# 重写的 [phira-mp](https://github.com/team
 1. 克隆或下载本仓库。
 2. dotnet run
 3. 服务器启动成功，也可以修改 server_config.yml 来配置服务器。
+或从 Releases 下载编译好的版本。
