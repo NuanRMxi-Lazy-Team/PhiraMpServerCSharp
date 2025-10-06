@@ -1,0 +1,134 @@
+﻿name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      
+      - name: Get commit hash
+        id: get_hash
+        run: echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+      
+      - name: Set version tag
+        id: set_version
+        run: echo "VERSION_TAG=autobuild-${{ steps.get_hash.outputs.COMMIT_HASH }}" >> $GITHUB_OUTPUT
+      
+      # Linux AMD64 - Framework Dependent
+      - name: Build Linux AMD64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r linux-x64 --self-contained false -o ./publish/linux-x64-fd
+          cd ./publish/linux-x64-fd
+          tar -czf ../PhiraMpServer-linux-x64-fd.tar.gz *
+      
+      # Linux AMD64 - Self Contained
+      - name: Build Linux AMD64 (Self Contained)
+        run: |
+          dotnet publish -c Release -r linux-x64 --self-contained true -o ./publish/linux-x64-sc
+          cd ./publish/linux-x64-sc
+          tar -czf ../PhiraMpServer-linux-x64-sc.tar.gz *
+      
+      # Linux ARM64 - Framework Dependent
+      - name: Build Linux ARM64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r linux-arm64 --self-contained false -o ./publish/linux-arm64-fd
+          cd ./publish/linux-arm64-fd
+          tar -czf ../PhiraMpServer-linux-arm64-fd.tar.gz *
+      
+      # Linux ARM64 - Self Contained
+      - name: Build Linux ARM64 (Self Contained)
+        run: |
+          dotnet publish -c Release -r linux-arm64 --self-contained true -o ./publish/linux-arm64-sc
+          cd ./publish/linux-arm64-sc
+          tar -czf ../PhiraMpServer-linux-arm64-sc.tar.gz *
+      
+      # Windows AMD64 - Framework Dependent
+      - name: Build Windows AMD64 (Framework Dependent)
+        run: |
+          dotnet publish -c Release -r win-x64 --self-contained false -o ./publish/win-x64-fd
+          cd ./publish/win-x64-fd
+          zip -r ../PhiraMpServer-win-x64-fd.zip *
+      
+      # Linux AMD64 - AOT (Native)
+      - name: Build Linux AMD64 AOT
+        run: |
+          dotnet publish -c Release -r linux-x64 -p:PublishAot=true -o ./publish/linux-x64-aot
+      
+      # Delete old latest release and tag
+      - name: Delete old latest release
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the release ID for 'latest' tag
+          RELEASE_ID=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/latest" \
+            | jq -r '.id')
+          
+          if [ "$RELEASE_ID" != "null" ] && [ -n "$RELEASE_ID" ]; then
+            echo "Deleting release ID: $RELEASE_ID"
+            curl -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$RELEASE_ID"
+          fi
+          
+          # Delete the tag
+          git push --delete origin latest || true
+      
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: latest
+          name: ${{ steps.set_version.outputs.VERSION_TAG }}
+          body: |
+            自动构建版本
+            
+            提交哈希: ${{ steps.get_hash.outputs.COMMIT_HASH }}
+            构建时间: ${{ github.event.head_commit.timestamp }}
+            
+            ## 下载说明
+            
+            ### 依赖框架版本 (Framework Dependent)
+            需要预先安装 .NET 8.0 运行时
+            - `PhiraMpServer-linux-x64-fd.tar.gz` - Linux AMD64
+            - `PhiraMpServer-linux-arm64-fd.tar.gz` - Linux ARM64
+            - `PhiraMpServer-win-x64-fd.zip` - Windows AMD64
+            
+            ### 独立版本 (Self Contained)
+            包含 .NET 运行时，无需额外安装
+            - `PhiraMpServer-linux-x64-sc.tar.gz` - Linux AMD64
+            - `PhiraMpServer-linux-arm64-sc.tar.gz` - Linux ARM64
+            
+            ### AOT 原生版本
+            原生编译，启动更快，体积更小，但可能出现问题
+            - `PhiraMpServer` - Linux AMD64 AOT (单文件)
+          draft: false
+          prerelease: false
+          files: |
+            ./publish/PhiraMpServer-linux-x64-fd.tar.gz
+            ./publish/PhiraMpServer-linux-x64-sc.tar.gz
+            ./publish/PhiraMpServer-linux-arm64-fd.tar.gz
+            ./publish/PhiraMpServer-linux-arm64-sc.tar.gz
+            ./publish/PhiraMpServer-win-x64-fd.zip
+            ./publish/linux-x64-aot/PhiraMpServer
+
