@@ -108,20 +108,35 @@ jobs:
             
             ## 下载说明
             
-            ### 依赖框架版本 (Framework Dependent)
-            需要预先安装 .NET 8.0 运行时
+            ### 依赖框架版本 (Framework Dependent - FD)
+            需要预先安装 .NET 8.0 运行时，体积较小
+            
+            **Linux**
             - `PhiraMpServer-linux-x64-fd.tar.gz` - Linux AMD64
             - `PhiraMpServer-linux-arm64-fd.tar.gz` - Linux ARM64
-            - `PhiraMpServer-win-x64-fd.zip` - Windows AMD64
             
-            ### 独立版本 (Self Contained)
-            包含 .NET 运行时，无需额外安装
+            **Windows**
+            - `PhiraMpServer-win-x64-fd.zip` - Windows AMD64
+            - `PhiraMpServer-win-arm64-fd.zip` - Windows ARM64
+            
+            **macOS**
+            - `PhiraMpServer-osx-x64-fd.tar.gz` - macOS Intel (AMD64)
+            - `PhiraMpServer-osx-arm64-fd.tar.gz` - macOS Apple Silicon (ARM64)
+            
+            ### 独立版本 (Self Contained - SC)
+            包含 .NET 运行时，无需额外安装，体积较大
+            
+            **Linux**
             - `PhiraMpServer-linux-x64-sc.tar.gz` - Linux AMD64
             - `PhiraMpServer-linux-arm64-sc.tar.gz` - Linux ARM64
             
-            ### AOT 原生版本
-            原生编译，启动更快，体积更小，但可能出现问题
-            - `PhiraMpServer` - Linux AMD64 AOT (单文件)
+            **Windows**
+            - `PhiraMpServer-win-x64-sc.zip` - Windows AMD64
+            - `PhiraMpServer-win-arm64-sc.zip` - Windows ARM64
+            
+            **macOS**
+            - `PhiraMpServer-osx-x64-sc.tar.gz` - macOS Intel (AMD64)
+            - `PhiraMpServer-osx-arm64-sc.tar.gz` - macOS Apple Silicon (ARM64)
           draft: false
           prerelease: false
           files: |
@@ -130,5 +145,11 @@ jobs:
             ./publish/PhiraMpServer-linux-arm64-fd.tar.gz
             ./publish/PhiraMpServer-linux-arm64-sc.tar.gz
             ./publish/PhiraMpServer-win-x64-fd.zip
-            ./publish/linux-x64-aot/PhiraMpServer
+            ./publish/PhiraMpServer-win-x64-sc.zip
+            ./publish/PhiraMpServer-win-arm64-fd.zip
+            ./publish/PhiraMpServer-win-arm64-sc.zip
+            ./publish/PhiraMpServer-osx-x64-fd.tar.gz
+            ./publish/PhiraMpServer-osx-x64-sc.tar.gz
+            ./publish/PhiraMpServer-osx-arm64-fd.tar.gz
+            ./publish/PhiraMpServer-osx-arm64-sc.tar.gz
 
