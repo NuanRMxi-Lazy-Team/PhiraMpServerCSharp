@@ -13,3 +13,7 @@ PhiraMpServerCSharp 是一个用 C# 重写的 [phira-mp](https://github.com/team
 2. dotnet run
 3. 服务器启动成功，也可以修改 server_config.yml 来配置服务器。
 或从 Releases 下载编译好的版本。
+
+## 特色功能
+- 不支持单人游戏
+- 支持投票功能，魔改了循环模式，原版客户端可兼容，行为详见[配置文件](https://github.com/NuanRMxi-Lazy-Team/PhiraMpServerCSharp/blob/main/server_config.example.yml),此功能需要手动开启。
