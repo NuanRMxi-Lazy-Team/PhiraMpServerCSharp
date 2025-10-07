@@ -10,6 +10,28 @@ using Microsoft.Extensions.Logging;
 namespace PhiraMpServer.Common;
 
 /// <summary>
+/// Helper class for handling network disconnection exceptions
+/// </summary>
+public static class DisconnectionHelper
+{
+    /// <summary>
+    /// Checks if an exception represents a client disconnection (not an error to log)
+    /// </summary>
+    public static bool IsClientDisconnection(Exception ex)
+    {
+        return ex switch
+        {
+            SocketException socketEx when socketEx.ErrorCode == 10054 => true, // Connection reset by peer
+            SocketException socketEx when socketEx.ErrorCode == 10053 => true, // Connection aborted
+            IOException ioEx when ioEx.InnerException is SocketException innerSocketEx &&
+                                  (innerSocketEx.ErrorCode == 10054 || innerSocketEx.ErrorCode == 10053) => true,
+            EndOfStreamException => true, // Graceful disconnect
+            _ => false
+        };
+    }
+}
+
+/// <summary>
 /// Bidirectional TCP stream with framing protocol
 /// Compatible with Rust phira-mp-common Stream implementation
 /// </summary>
@@ -24,6 +46,7 @@ public class ProtocolStream : IDisposable
     private readonly Func<ServerCommand, Task> _handler;
     private readonly ILogger? _logger;
     private bool _disposed;
+    private volatile bool _isConnected = true;
 
     public byte Version { get; }
 
@@ -56,15 +79,27 @@ public class ProtocolStream : IDisposable
 
     public async Task SendAsync(ServerCommand command)
     {
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(ProtocolStream));
+        if (_disposed || !_isConnected)
+            return;
 
-        await _sendChannel.Writer.WriteAsync(command, _cts.Token);
+        try
+        {
+            await _sendChannel.Writer.WriteAsync(command, _cts.Token);
+        }
+        catch (InvalidOperationException)
+        {
+            // Channel is closed, connection is likely dead
+            _isConnected = false;
+        }
+        catch (OperationCanceledException)
+        {
+            // Normal shutdown
+        }
     }
 
     public bool TrySend(ServerCommand command)
     {
-        if (_disposed)
+        if (_disposed || !_isConnected)
             return false;
 
         return _sendChannel.Writer.TryWrite(command);
@@ -268,9 +303,11 @@ public class ClientStream : IDisposable
     private readonly ILogger? _logger;
     private DateTime _lastReceive;
     private bool _disposed;
+    private volatile bool _isConnected = true;
 
     public byte Version { get; }
     public DateTime LastReceive => _lastReceive;
+    public bool IsConnected => _isConnected && !_disposed && _client.Connected;
 
     public ClientStream(
         TcpClient client,
@@ -359,10 +396,25 @@ public class ClientStream : IDisposable
         catch (OperationCanceledException)
         {
             // Normal shutdown
+            _logger?.LogDebug("Send loop cancelled");
+        }
+        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
+                                       (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
+        {
+            // Client disconnected unexpectedly during send
+            _logger?.LogDebug("Client disconnected during send (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            _isConnected = false;
+        }
+        catch (SocketException socketEx) when (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053)
+        {
+            // Direct socket exception for connection reset/aborted during send
+            _logger?.LogDebug("Client connection reset during send (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            _isConnected = false;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in send loop");
+            _logger?.LogError(ex, "Unexpected error in send loop");
+            _isConnected = false;
         }
     }
 
@@ -437,10 +489,31 @@ public class ClientStream : IDisposable
         catch (OperationCanceledException)
         {
             // Normal shutdown
+            _logger?.LogDebug("Receive loop cancelled");
+        }
+        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
+                                       (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
+        {
+            // Client disconnected unexpectedly (connection reset/aborted)
+            _logger?.LogDebug("Client disconnected unexpectedly (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            _isConnected = false;
+        }
+        catch (SocketException socketEx) when (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053)
+        {
+            // Direct socket exception for connection reset/aborted
+            _logger?.LogDebug("Client connection reset (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            _isConnected = false;
+        }
+        catch (EndOfStreamException)
+        {
+            // Connection closed gracefully
+            _logger?.LogDebug("Client connection closed gracefully");
+            _isConnected = false;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in receive loop");
+            _logger?.LogError(ex, "Unexpected error in receive loop");
+            _isConnected = false;
         }
     }
 

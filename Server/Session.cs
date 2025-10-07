@@ -167,7 +167,7 @@ public class Session : IDisposable
             logger);
 
         typeof(Session).GetProperty(nameof(Stream))!.SetValue(session, stream);
-
+        await Task.CompletedTask;
         return session;
     }
 
@@ -332,8 +332,9 @@ public class Session : IDisposable
                 var lastFrame = cmd.Frames[^1];
                 User.GameTime = lastFrame.Time;
             }
-            _ = Task.Run(() => room.BroadcastMonitorsAsync(new Common.ServerTouchesCommand(User.Id, cmd.Frames)));
+            _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerTouchesCommand(User.Id, cmd.Frames)));
         }
+        await Task.CompletedTask;
         return null;
     }
 
@@ -343,8 +344,9 @@ public class Session : IDisposable
         if (room != null && room.Live)
         {
             _logger.LogDebug("Received {Count} judge events from {UserId}", cmd.Judges.Count, User.Id);
-            _ = Task.Run(() => room.BroadcastMonitorsAsync(new Common.ServerJudgesCommand(User.Id, cmd.Judges)));
+            _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerJudgesCommand(User.Id, cmd.Judges)));
         }
+        await Task.CompletedTask;
         return null;
     }
 
@@ -677,7 +679,7 @@ public class Session : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-
+        GC.SuppressFinalize(this);
         _cts.Cancel();
         Stream?.Dispose();
 
