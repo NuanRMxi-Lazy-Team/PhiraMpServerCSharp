@@ -361,6 +361,8 @@ public class Session : IDisposable
                 throw new Exception("Room ID already occupied");
             }
 
+            // Broadcast user info so clients can map user ID to username
+            await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 
