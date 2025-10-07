@@ -63,19 +63,22 @@ public class Room
     public InternalRoomState State { get; set; } = new InternalRoomState.SelectChart();
     public bool Live { get; set; }
     public bool Locked { get; set; }
-    public bool Cycle { get; set; }
+    public bool Cycle { get; private set; }
     public ChartInfo? Chart { get; set; }
+    public bool CycleVotingMode { get; set; }
+    public Dictionary<int, ChartInfo> ChartVotes { get; set; } = new();
 
     private readonly List<User> _users = new();
     private readonly List<User> _monitors = new();
     private readonly object _lock = new();
     private readonly int _maxUsers;
 
-    public Room(RoomId id, User host, int maxUsers = 8)
+    public Room(RoomId id, User host, int maxUsers = 8, bool cycleVotingMode = false)
     {
         Id = id;
         Host = host;
         _maxUsers = maxUsers;
+        CycleVotingMode = cycleVotingMode;
         _users.Add(host);
     }
 
@@ -85,6 +88,56 @@ public class Room
     {
         if (!IsHost(user))
             throw new Exception("Only host can do this");
+    }
+
+    public void SetCycle(bool cycle)
+    {
+        if (CycleVotingMode)
+        {
+            // 告诉所有客户端你是host（除了真host）
+            var users = GetUsers();
+            foreach (var user in users)
+            {
+                if (!IsHost(user))
+                {
+                    user.TrySendAsync(new ChangeHostCommand(cycle)).Wait();
+                }
+            }
+        }
+        Cycle = cycle;
+    }
+
+    public void CheckCanSelectChart(User user)
+    {
+        // Only in Cycle mode with voting enabled, all users can select charts
+        if (Cycle && CycleVotingMode)
+        {
+            return;
+        }
+        else
+        {
+            // In normal mode or Cycle without voting, only host can select
+            CheckHost(user);
+        }
+    }
+
+    public void VoteChart(User user, ChartInfo chart)
+    {
+        ChartVotes[user.Id] = chart;
+    }
+
+    public ChartInfo? SelectRandomChartFromVotes()
+    {
+        if (ChartVotes.Count == 0)
+            return null;
+
+        var charts = ChartVotes.Values.ToList();
+        return charts[Random.Shared.Next(charts.Count)];
+    }
+
+    public void ClearVotes()
+    {
+        ChartVotes.Clear();
     }
 
     public RoomStateData GetClientRoomState()
@@ -266,7 +319,7 @@ public class Room
                     await SendAsync(new GameEndMessage());
                     State = new InternalRoomState.SelectChart();
 
-                    if (Cycle)
+                    if (Cycle && !CycleVotingMode)
                     {
                         logger?.LogDebug("Room {RoomId} cycling", Id);
 
@@ -281,6 +334,19 @@ public class Room
                         await SendAsync(new NewHostMessage(newHost.Id));
                         await oldHost.TrySendAsync(new ChangeHostCommand(false));
                         await newHost.TrySendAsync(new ChangeHostCommand(true));
+                    }
+                    else if (Cycle && CycleVotingMode)
+                    {
+                        Chart = null;
+                        ClearVotes();
+                        // 告诉所有客户端你是host（除了真host）
+                        foreach (var user in users)
+                        {
+                            if (!IsHost(user))
+                            {
+                                user.TrySendAsync(new ChangeHostCommand(true)).Wait();
+                            }
+                        }
                     }
 
                     await OnStateChangeAsync();

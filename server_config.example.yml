@@ -1,0 +1,32 @@
+﻿# Phira Multiplayer Server Configuration
+
+# 绑定IP地址 ("::" 表示监听所有IPv4和IPv6地址)
+bind_ip: "::"
+
+# 服务器端口
+port: 12346
+
+# 房间最大玩家数
+room_max_players: 8
+
+# 监控用户ID列表
+monitors:
+  - 2
+
+# Cycle模式投票功能 (true: 启用, false: 禁用)
+# 注意：此配置仅在房间开启Cycle模式时生效
+# 
+# 当Cycle模式开启且此选项为true时：
+# - 所有玩家都被视为"假host"，都可以选择谱面（投票）
+# - 只有真正的房主可以开始游戏
+# - 玩家可以不投票
+# - 开始游戏时，系统会从所有投票中随机选择一张谱面
+# - 游戏结束后，房主循环切换到下一位玩家，投票记录清空
+#
+# 当Cycle模式开启且此选项为false时：
+# - 行为与原版Cycle模式相同
+# - 房主切换后，新房主选择谱面
+#
+# 当Cycle模式关闭时：
+# - 此配置无效，始终只有房主可以选择谱面
+cycle_voting_mode: false

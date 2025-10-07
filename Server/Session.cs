@@ -357,7 +357,7 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers);
+            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server.Config.CycleVotingMode);
             if (!Server.Rooms.TryAdd(cmd.Id.Value, room))
             {
                 throw new Exception("Room ID already occupied");
@@ -477,7 +477,7 @@ public class Session : IDisposable
             _logger.LogInformation("User {UserId} set room {RoomId} cycle to {Cycle}",
                 User.Id, room.Id, cmd.Cycle);
 
-            room.Cycle = cmd.Cycle;
+            room.SetCycle(cmd.Cycle);
             await room.SendAsync(new CycleRoomMessage(cmd.Cycle));
 
             return new CycleRoomResponseCommand(true);
@@ -496,7 +496,7 @@ public class Session : IDisposable
             if (room.State is not InternalRoomState.SelectChart)
                 throw new Exception("Invalid state");
 
-            room.CheckHost(User);
+            room.CheckCanSelectChart(User);
 
             _logger.LogDebug("User {UserId} in room {RoomId} selecting chart {ChartId}",
                 User.Id, room.Id, cmd.Id);
@@ -511,9 +511,23 @@ public class Session : IDisposable
 
             _logger.LogDebug("Chart is {@Chart}", chart);
 
-            await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
-            room.Chart = chart;
-            await room.OnStateChangeAsync();
+            if (room.Cycle && room.CycleVotingMode)
+            {
+                // In Cycle mode with voting enabled, store the vote
+                room.VoteChart(User, chart);
+                // Also set as current chart so clients know a chart is selected
+                room.Chart = chart;
+                await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
+                await room.OnStateChangeAsync();
+                _logger.LogDebug("User {UserId} voted for chart {ChartId} in Cycle voting mode", User.Id, chart.Id);
+            }
+            else
+            {
+                // In normal mode or Cycle without voting, host directly sets the chart
+                await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
+                room.Chart = chart;
+                await room.OnStateChangeAsync();
+            }
 
             return new SelectChartResponseCommand(true);
         }
@@ -535,8 +549,38 @@ public class Session : IDisposable
 
             room.CheckHost(User);
 
-            if (room.Chart == null)
-                throw new Exception("No chart selected");
+            // In Cycle mode with voting enabled, randomly select a chart from votes
+            if (room.Cycle && room.CycleVotingMode)
+            {
+                var selectedChart = room.SelectRandomChartFromVotes();
+                if (selectedChart == null)
+                    throw new Exception("No chart selected");
+
+                room.Chart = selectedChart;
+                _logger.LogInformation("Room {RoomId} in Cycle voting mode randomly selected chart {ChartId} from {VoteCount} votes",
+                    room.Id, selectedChart.Id, room.ChartVotes.Count);
+                
+                // Revoke fake host status from all non-host users
+                var users = room.GetUsers();
+                foreach (var user in users)
+                {
+                    if (!room.IsHost(user))
+                    {
+                        await user.TrySendAsync(new ChangeHostCommand(false));
+                    }
+                }
+                
+                // Clear votes for next round
+                room.ClearVotes();
+                
+                // Notify all users of the final selected chart
+                await room.OnStateChangeAsync();
+            }
+            else
+            {
+                if (room.Chart == null)
+                    throw new Exception("No chart selected");
+            }
 
             _logger.LogDebug("Room {RoomId} waiting for ready", room.Id);
 
@@ -593,6 +637,18 @@ public class Session : IDisposable
                 {
                     await room.SendAsync(new CancelGameMessage(User.Id));
                     room.State = new InternalRoomState.SelectChart();
+                    if (room.CycleVotingMode && room.Cycle)
+                    {
+                        room.Chart = null;
+                        var users = room.GetUsers();
+                        foreach (var user in users)
+                        {
+                            if (!room.IsHost(user))
+                            {
+                                user.TrySendAsync(new ChangeHostCommand(true)).Wait();
+                            }
+                        }
+                    }
                     await room.OnStateChangeAsync();
                 }
                 else

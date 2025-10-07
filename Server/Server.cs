@@ -19,6 +19,7 @@ public class ServerConfig
     public int Port { get; set; } = 12346;
     public int RoomMaxPlayers { get; set; } = 8;
     public List<int> Monitors { get; set; } = new() { 2 };
+    public bool CycleVotingMode { get; set; } = false;
 
     public static ServerConfig Load(string path = "server_config.yml")
     {
