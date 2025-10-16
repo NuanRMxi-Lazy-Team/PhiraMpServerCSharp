@@ -7,7 +7,6 @@ using System.Net.Sockets;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using PhiraMpServer.Common;
 
 namespace PhiraMpServer.Server;
@@ -81,7 +80,7 @@ public class User
         }
     }
 
-    public async Task DangleAsync(ILogger logger)
+    public async Task DangleAsync()
     {
         lock (_lock)
         {
@@ -89,14 +88,14 @@ public class User
             _dangling = true;
         }
 
-        logger.LogWarning("User {UserId} dangling", Id);
+        Logger.Warning($"User {Id} dangling");
 
         var room = Room;
         if (room != null)
         {
             if (room.State is InternalRoomState.Playing)
             {
-                logger.LogWarning("User {UserId} lost connection while playing, aborting", Id);
+                Logger.Warning($"User {Id} lost connection while playing, aborting");
                 Server.Users.TryRemove(Id, out _);
                 if (await room.OnUserLeaveAsync(this))
                 {
@@ -137,18 +136,16 @@ public class Session : IDisposable
     public ClientStream Stream { get; private set; } = null!;
     public User User { get; private set; } = null!;
     public ServerState Server { get; }
-    private readonly ILogger _logger;
     private readonly CancellationTokenSource _cts;
     private readonly Task _monitorTask;
     private bool _authenticated;
     private bool _disposed;
 
-    private Session(Guid id, ClientStream stream, ServerState server, ILogger logger)
+    private Session(Guid id, ClientStream stream, ServerState server)
     {
         Id = id;
         Stream = stream;
         Server = server;
-        _logger = logger;
         _cts = new CancellationTokenSource();
         _monitorTask = Task.Run(MonitorHeartbeat);
     }
@@ -156,15 +153,13 @@ public class Session : IDisposable
     public static async Task<Session> CreateAsync(
         Guid id,
         TcpClient client,
-        ServerState server,
-        ILogger logger)
+        ServerState server)
     {
-        var session = new Session(id, null!, server, logger);
+        var session = new Session(id, null!, server);
 
         var stream = new ClientStream(
             client,
-            cmd => session.HandleCommandAsync(cmd),
-            logger);
+            cmd => session.HandleCommandAsync(cmd));
 
         typeof(Session).GetProperty(nameof(Stream))!.SetValue(session, stream);
         await Task.CompletedTask;
@@ -182,7 +177,7 @@ public class Session : IDisposable
                 var lastRecv = Stream.LastReceive;
                 if (DateTime.UtcNow - lastRecv > TimeSpan.FromSeconds(10))
                 {
-                    _logger.LogWarning("Session {SessionId} heartbeat timeout", Id);
+                    Logger.Warning($"Session {Id} heartbeat timeout");
                     await Server.LostConnectionAsync(Id);
                     break;
                 }
@@ -202,7 +197,7 @@ public class Session : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to deliver command to {SessionId}", Id);
+            Logger.Error(ex, $"Failed to deliver command to {Id}:");
         }
     }
 
@@ -218,7 +213,7 @@ public class Session : IDisposable
                 }
                 else
                 {
-                    _logger.LogWarning("Packet before authentication, ignoring: {Command}", cmd.GetType().Name);
+                    Logger.Warning($"Packet before authentication, ignoring: {cmd.GetType().Name}");
                     return null;
                 }
             }
@@ -227,7 +222,7 @@ public class Session : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error processing command {Command}", cmd.GetType().Name);
+            Logger.Error(ex, $"Error processing command {cmd.GetType().Name}:");
             return null;
         }
     }
@@ -242,7 +237,7 @@ public class Session : IDisposable
                 return new AuthenticateResponseCommand("Invalid token");
             }
 
-            _logger.LogDebug("Session {SessionId}: authenticate {Token}", Id, token);
+            Logger.Debug($"Session {Id}: authenticate {token}");
 
             using var httpClient = new HttpClient();
             httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
@@ -256,12 +251,12 @@ public class Session : IDisposable
                 return new AuthenticateResponseCommand("Failed to fetch user info");
             }
 
-            _logger.LogDebug("Session {SessionId} <- {@UserInfo}", Id, userInfo);
+            Logger.Debug($"Session {Id} <- User: {userInfo.Id}, Name: {userInfo.Name}");
 
             User? user;
             if (Server.Users.TryGetValue(userInfo.Id, out user))
             {
-                _logger.LogInformation("User {UserId} reconnect", userInfo.Id);
+                Logger.Info($"User {userInfo.Id} reconnect");
                 User = user;
                 user.SetSession(this);
             }
@@ -280,7 +275,7 @@ public class Session : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to authenticate");
+            Logger.Warning($"Failed to authenticate: {ex.Message}");
             return new AuthenticateResponseCommand(ex.Message);
         }
     }
@@ -326,7 +321,7 @@ public class Session : IDisposable
         var room = User.Room;
         if (room != null && room.Live)
         {
-            _logger.LogDebug("Received {Count} touch events from {UserId}", cmd.Frames.Count, User.Id);
+            Logger.Debug($"Received {cmd.Frames.Count} touch events from {User.Id}");
             if (cmd.Frames.Count > 0)
             {
                 var lastFrame = cmd.Frames[^1];
@@ -343,7 +338,7 @@ public class Session : IDisposable
         var room = User.Room;
         if (room != null && room.Live)
         {
-            _logger.LogDebug("Received {Count} judge events from {UserId}", cmd.Judges.Count, User.Id);
+            Logger.Debug($"Received {cmd.Judges.Count} judge events from {User.Id}");
             _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerJudgesCommand(User.Id, cmd.Judges)));
         }
         await Task.CompletedTask;
@@ -368,7 +363,7 @@ public class Session : IDisposable
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 
-            _logger.LogInformation("User {UserId} created room {RoomId}", User.Id, cmd.Id);
+            Logger.Info($"User {User.Id} created room {cmd.Id}");
             return new CreateRoomResponseCommand(true);
         }
         catch (Exception ex)
@@ -399,14 +394,13 @@ public class Session : IDisposable
             if (!room.AddUser(User, cmd.Monitor))
                 throw new Exception("Room is full");
 
-            _logger.LogInformation("User {UserId} joined room {RoomId} (monitor: {Monitor})",
-                User.Id, cmd.Id, cmd.Monitor);
+            Logger.Info($"User {User.Id} joined room {cmd.Id} (monitor: {cmd.Monitor})");
 
             User.IsMonitor = cmd.Monitor;
             if (cmd.Monitor && !room.Live)
             {
                 room.Live = true;
-                _logger.LogInformation("Room {RoomId} goes live", cmd.Id);
+                Logger.Info($"Room {cmd.Id} goes live");
             }
 
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
@@ -431,7 +425,7 @@ public class Session : IDisposable
         try
         {
             var room = User.Room ?? throw new Exception("No room");
-            _logger.LogInformation("User {UserId} left room {RoomId}", User.Id, room.Id);
+            Logger.Info($"User {User.Id} left room {room.Id}");
 
             if (await room.OnUserLeaveAsync(User))
             {
@@ -453,8 +447,7 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             room.CheckHost(User);
 
-            _logger.LogInformation("User {UserId} set room {RoomId} lock to {Lock}",
-                User.Id, room.Id, cmd.Lock);
+            Logger.Info($"User {User.Id} set room {room.Id} lock to {cmd.Lock}");
 
             room.Locked = cmd.Lock;
             await room.SendAsync(new LockRoomMessage(cmd.Lock));
@@ -474,8 +467,7 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             room.CheckHost(User);
 
-            _logger.LogInformation("User {UserId} set room {RoomId} cycle to {Cycle}",
-                User.Id, room.Id, cmd.Cycle);
+            Logger.Info($"User {User.Id} set room {room.Id} cycle to {cmd.Cycle}");
 
             room.SetCycle(cmd.Cycle);
             await room.SendAsync(new CycleRoomMessage(cmd.Cycle));
@@ -498,8 +490,7 @@ public class Session : IDisposable
 
             room.CheckCanSelectChart(User);
 
-            _logger.LogDebug("User {UserId} in room {RoomId} selecting chart {ChartId}",
-                User.Id, room.Id, cmd.Id);
+            Logger.Debug($"User {User.Id} in room {room.Id} selecting chart {cmd.Id}");
 
             using var httpClient = new HttpClient();
             var response = await httpClient.GetAsync($"{PhiraHost}/chart/{cmd.Id}");
@@ -509,7 +500,7 @@ public class Session : IDisposable
             if (chart == null)
                 throw new Exception("Failed to fetch chart");
 
-            _logger.LogDebug("Chart is {@Chart}", chart);
+            Logger.Debug($"Chart is {chart.Name} (ID: {chart.Id})");
 
             if (room.Cycle && room.CycleVotingMode)
             {
@@ -519,7 +510,7 @@ public class Session : IDisposable
                 room.Chart = chart;
                 await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
                 await room.OnStateChangeAsync();
-                _logger.LogDebug("User {UserId} voted for chart {ChartId} in Cycle voting mode", User.Id, chart.Id);
+                Logger.Debug($"User {User.Id} voted for chart {chart.Id} in Cycle voting mode");
             }
             else
             {
@@ -557,8 +548,7 @@ public class Session : IDisposable
                     throw new Exception("No chart selected");
 
                 room.Chart = selectedChart;
-                _logger.LogInformation("Room {RoomId} in Cycle voting mode randomly selected chart {ChartId} from {VoteCount} votes",
-                    room.Id, selectedChart.Id, room.ChartVotes.Count);
+                Logger.Info($"Room {room.Id} in Cycle voting mode randomly selected chart {selectedChart.Id} from {room.ChartVotes.Count} votes");
                 
                 // Revoke fake host status from all non-host users
                 var users = room.GetUsers();
@@ -582,14 +572,14 @@ public class Session : IDisposable
                     throw new Exception("No chart selected");
             }
 
-            _logger.LogDebug("Room {RoomId} waiting for ready", room.Id);
+            Logger.Debug($"Room {room.Id} waiting for ready");
 
             room.ResetGameTime();
             await room.SendAsync(new GameStartMessage(User.Id));
 
             room.State = new InternalRoomState.WaitForReady { Started = new HashSet<int> { User.Id } };
             await room.OnStateChangeAsync();
-            await room.CheckAllReadyAsync(_logger);
+            await room.CheckAllReadyAsync();
 
             return new RequestStartResponseCommand(true);
         }
@@ -611,7 +601,7 @@ public class Session : IDisposable
                     throw new Exception("Already ready");
 
                 await room.SendAsync(new ReadyMessage(User.Id));
-                await room.CheckAllReadyAsync(_logger);
+                await room.CheckAllReadyAsync();
             }
 
             return new ReadyResponseCommand(true);
@@ -679,8 +669,7 @@ public class Session : IDisposable
             if (record == null || record.Player != User.Id)
                 throw new Exception("Invalid record");
 
-            _logger.LogDebug("Room {RoomId} user {UserId} played: {@Record}",
-                room.Id, User.Id, record);
+            Logger.Debug($"Room {room.Id} user {User.Id} played: Score={record.Score}, Accuracy={record.Accuracy}, FC={record.FullCombo}");
 
             await room.SendAsync(new PlayedMessage(
                 User.Id, record.Score, record.Accuracy, record.FullCombo));
@@ -694,7 +683,7 @@ public class Session : IDisposable
                     throw new Exception("Already uploaded");
 
                 playingState.Results[User.Id] = record;
-                await room.CheckAllReadyAsync(_logger);
+                await room.CheckAllReadyAsync();
             }
 
             return new PlayedResponseCommand(true);
@@ -720,7 +709,7 @@ public class Session : IDisposable
                     throw new Exception("Already aborted");
 
                 await room.SendAsync(new AbortMessage(User.Id));
-                await room.CheckAllReadyAsync(_logger);
+                await room.CheckAllReadyAsync();
             }
 
             return new AbortResponseCommand(true);

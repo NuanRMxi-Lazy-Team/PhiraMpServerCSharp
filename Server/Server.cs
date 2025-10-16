@@ -7,7 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
+using PhiraMpServer.Common;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -76,16 +76,12 @@ public class PhiraMpServer : IDisposable
 {
     private readonly ServerState _state;
     private readonly TcpListener _listener;
-    private readonly ILogger<PhiraMpServer> _logger;
-    private readonly ILoggerFactory _loggerFactory;
     private readonly CancellationTokenSource _cts;
     private readonly Task _lostConnectionTask;
     private bool _disposed;
 
-    public PhiraMpServer(ILoggerFactory loggerFactory, ServerConfig? config = null)
+    public PhiraMpServer(ServerConfig? config = null)
     {
-        _loggerFactory = loggerFactory;
-        _logger = loggerFactory.CreateLogger<PhiraMpServer>();
         _cts = new CancellationTokenSource();
 
         config ??= ServerConfig.Load();
@@ -106,7 +102,7 @@ public class PhiraMpServer : IDisposable
     public async Task StartAsync()
     {
         _listener.Start();
-        _logger.LogInformation("Server listening on port {Port}", ((IPEndPoint)_listener.LocalEndpoint).Port);
+        Logger.Info($"Server listening on port {((IPEndPoint)_listener.LocalEndpoint).Port}");
 
         while (!_cts.Token.IsCancellationRequested)
         {
@@ -121,7 +117,7 @@ public class PhiraMpServer : IDisposable
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Failed to accept connection");
+                Logger.Warning($"Failed to accept connection: {ex.Message}");
             }
         }
     }
@@ -133,11 +129,9 @@ public class PhiraMpServer : IDisposable
 
         try
         {
-            var sessionLogger = _loggerFactory.CreateLogger<Session>();
-            var session = await Session.CreateAsync(sessionId, client, _state, sessionLogger);
+            var session = await Session.CreateAsync(sessionId, client, _state);
 
-            _logger.LogInformation("Received connection from {Endpoint} ({SessionId}), version: {Version}",
-                endpoint, sessionId, session.Stream.Version);
+            Logger.Info($"Received connection from {endpoint} ({sessionId}), version: {session.Stream.Version}");
 
             _state.Sessions[sessionId] = session;
 
@@ -145,7 +139,7 @@ public class PhiraMpServer : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to handle client {Endpoint}", endpoint);
+            Logger.Error(ex, $"Failed to handle client {endpoint}:");
             client.Dispose();
         }
     }
@@ -156,7 +150,7 @@ public class PhiraMpServer : IDisposable
         {
             await foreach (var sessionId in _state.LostConnectionChannel.Reader.ReadAllAsync(_cts.Token))
             {
-                _logger.LogWarning("Lost connection with {SessionId}", sessionId);
+                Logger.Warning($"Lost connection with {sessionId}");
 
                 if (_state.Sessions.TryRemove(sessionId, out var session))
                 {
@@ -169,7 +163,7 @@ public class PhiraMpServer : IDisposable
 
                         if (currentSession == session)
                         {
-                            await user.DangleAsync(_logger);
+                            await user.DangleAsync();
                         }
                     }
 

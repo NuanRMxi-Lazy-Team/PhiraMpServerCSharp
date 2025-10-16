@@ -1,11 +1,10 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 
 namespace PhiraMpServer.Common;
 
@@ -44,7 +43,6 @@ public class ProtocolStream : IDisposable
     private readonly Task _receiveTask;
     private readonly CancellationTokenSource _cts;
     private readonly Func<ServerCommand, Task> _handler;
-    private readonly ILogger? _logger;
     private bool _disposed;
     private volatile bool _isConnected = true;
 
@@ -52,12 +50,10 @@ public class ProtocolStream : IDisposable
 
     public ProtocolStream(
         TcpClient client,
-        Func<ServerCommand, Task> handler,
-        ILogger? logger = null)
+        Func<ServerCommand, Task> handler)
     {
         _networkStream = client.GetStream();
         _handler = handler;
-        _logger = logger;
         _cts = new CancellationTokenSource();
         _sendChannel = Channel.CreateUnbounded<ServerCommand>(new UnboundedChannelOptions
         {
@@ -121,7 +117,7 @@ public class ProtocolStream : IDisposable
                 command.WriteBinary(writer);
                 var payload = writer.ToArray();
 
-                _logger?.LogTrace("Sending {Size} bytes ({Command})", payload.Length, command.GetType().Name);
+                Logger.Debug($"Sending {payload.Length} bytes ({command.GetType().Name})");
 
                 // Write ULEB128 length
                 uint length = (uint)payload.Length;
@@ -148,7 +144,7 @@ public class ProtocolStream : IDisposable
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in send loop");
+            Logger.Error(ex, "Error in send loop:");
         }
     }
 
@@ -164,38 +160,40 @@ public class ProtocolStream : IDisposable
                 uint length = 0;
                 int shift = 0;
 
-                while (true)
+                try
                 {
-                    int b = await ReadByteAsync(_cts.Token);
-                    if (b == -1)
+                    while (true)
                     {
-                        _logger?.LogDebug("Connection closed by peer");
-                        return;
+                        int b = await ReadByteAsync(_cts.Token);
+                        if (b == -1)
+                        {
+                            Logger.Debug("Connection closed by peer");
+                            return;
+                        }
+
+                        length |= ((uint)(b & 0x7F)) << shift;
+                        shift += 7;
+
+                        if ((b & 0x80) == 0)
+                            break;
                     }
-
-                    length |= ((uint)(b & 0x7F)) << shift;
-                    shift += 7;
-
-                    if ((b & 0x80) == 0)
-                        break;
-
-                    if (shift > 32)
-                    {
-                        _logger?.LogWarning("Invalid length encoding");
-                        return;
-                    }
+                }
+                catch (ArgumentException)
+                {
+                    Logger.Warning("Invalid length encoding");
+                    return;
                 }
 
                 if (length > MaxPacketSize)
                 {
-                    _logger?.LogWarning("Packet too large: {Size}", length);
+                    Logger.Warning($"Packet too large: {length}");
                     return;
                 }
 
                 // Read payload
                 await ReadExactAsync(buffer.AsMemory(0, (int)length), _cts.Token);
 
-                _logger?.LogTrace("Received {Size} bytes", length);
+                Logger.Debug($"Received {length} bytes");
 
                 // Parse command
                 try
@@ -203,15 +201,14 @@ public class ProtocolStream : IDisposable
                     var reader = new BinaryReader(buffer.AsSpan(0, (int)length).ToArray());
                     var command = ClientCommand.ReadBinary(reader);
 
-                    _logger?.LogTrace("Decoded to {Command}", command.GetType().Name);
+                    Logger.Debug($"Decoded to {command.GetType().Name}");
 
                     // Handle command
                     await HandleCommandAsync(command);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogWarning(ex, "Invalid packet");
-                    return;
+                    Logger.Warning($"Invalid packet: {ex.Message}");
                 }
             }
         }
@@ -221,7 +218,7 @@ public class ProtocolStream : IDisposable
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error in receive loop");
+            Logger.Error(ex, "Error in receive loop:");
         }
     }
 
@@ -242,7 +239,7 @@ public class ProtocolStream : IDisposable
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error handling command {Command}", command.GetType().Name);
+            Logger.Error(ex, $"Error handling command {command.GetType().Name}:");
         }
     }
 
@@ -300,7 +297,6 @@ public class ClientStream : IDisposable
     private readonly Task _receiveTask;
     private readonly CancellationTokenSource _cts;
     private readonly Func<ClientCommand, Task<ServerCommand?>> _handler;
-    private readonly ILogger? _logger;
     private DateTime _lastReceive;
     private bool _disposed;
     private volatile bool _isConnected = true;
@@ -311,13 +307,11 @@ public class ClientStream : IDisposable
 
     public ClientStream(
         TcpClient client,
-        Func<ClientCommand, Task<ServerCommand?>> handler,
-        ILogger? logger = null)
+        Func<ClientCommand, Task<ServerCommand?>> handler)
     {
         _client = client;
         _networkStream = client.GetStream();
         _handler = handler;
-        _logger = logger;
         _cts = new CancellationTokenSource();
         _lastReceive = DateTime.UtcNow;
         _sendChannel = Channel.CreateUnbounded<ServerCommand>(new UnboundedChannelOptions
@@ -336,7 +330,7 @@ public class ClientStream : IDisposable
             throw new InvalidOperationException("Failed to read version from client");
         }
         Version = (byte)versionByte;
-        _logger?.LogDebug("Client version: {Version}", Version);
+        Logger.Debug($"Client version: {Version}");
 
         _sendTask = Task.Run(SendLoop, _cts.Token);
         _receiveTask = Task.Run(ReceiveLoop, _cts.Token);
@@ -371,8 +365,7 @@ public class ClientStream : IDisposable
                 command.WriteBinary(writer);
                 var payload = writer.ToArray();
 
-                _logger?.LogTrace("Sending {Size} bytes ({Command}): {Payload}",
-                    payload.Length, command.GetType().Name, BitConverter.ToString(payload));
+                Logger.Debug($"Sending {payload.Length} bytes ({command.GetType().Name}): {BitConverter.ToString(payload)}");
 
                 // Write ULEB128 length
                 uint length = (uint)payload.Length;
@@ -396,24 +389,24 @@ public class ClientStream : IDisposable
         catch (OperationCanceledException)
         {
             // Normal shutdown
-            _logger?.LogDebug("Send loop cancelled");
+            Logger.Debug("Send loop cancelled");
         }
         catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
                                        (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
         {
             // Client disconnected unexpectedly during send
-            _logger?.LogDebug("Client disconnected during send (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            Logger.Debug($"Client disconnected during send (ErrorCode: {socketEx.ErrorCode})");
             _isConnected = false;
         }
         catch (SocketException socketEx) when (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053)
         {
             // Direct socket exception for connection reset/aborted during send
-            _logger?.LogDebug("Client connection reset during send (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            Logger.Debug($"Client connection reset during send (ErrorCode: {socketEx.ErrorCode})");
             _isConnected = false;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected error in send loop");
+            Logger.Error(ex, "Unexpected error in send loop:");
             _isConnected = false;
         }
     }
@@ -435,7 +428,7 @@ public class ClientStream : IDisposable
                     int b = await ReadByteAsync(_cts.Token);
                     if (b == -1)
                     {
-                        _logger?.LogDebug("Connection closed by peer");
+                        Logger.Debug("Connection closed by peer");
                         return;
                     }
 
@@ -447,23 +440,22 @@ public class ClientStream : IDisposable
 
                     if (shift > 32)
                     {
-                        _logger?.LogWarning("Invalid length encoding");
+                        Logger.Warning("Invalid length encoding");
                         return;
                     }
                 }
 
-                if (length > 2 * 1024 * 1024)
+                if (length > 1024 * 1024)
                 {
-                    _logger?.LogWarning("Packet too large: {Size}", length);
-                    return;
+                    Logger.Warning($"Packet too large: {length}");
+                    break;
                 }
 
                 // Read payload
                 await ReadExactAsync(buffer.AsMemory(0, (int)length), _cts.Token);
                 _lastReceive = DateTime.UtcNow;
 
-                _logger?.LogTrace("Received {Size} bytes: {Payload}",
-                    length, BitConverter.ToString(buffer, 0, (int)length));
+                Logger.Debug($"Received {length} bytes: {BitConverter.ToString(buffer, 0, (int)length)}");
 
                 // Parse command
                 try
@@ -471,15 +463,14 @@ public class ClientStream : IDisposable
                     var reader = new BinaryReader(buffer.AsSpan(0, (int)length).ToArray());
                     var command = ClientCommand.ReadBinary(reader);
 
-                    _logger?.LogTrace("Decoded to {Command}", command.GetType().Name);
+                    Logger.Debug($"Decoded to {command.GetType().Name}");
 
                     // Handle command
                     await HandleCommandAsync(command);
                 }
                 catch (Exception ex)
                 {
-                    _logger?.LogWarning(ex, "Invalid packet: {Payload}",
-                        BitConverter.ToString(buffer, 0, Math.Min((int)length, 100)));
+                    Logger.Warning($"Invalid packet: {BitConverter.ToString(buffer, 0, Math.Min((int)length, 100))}: {ex.Message}");
                     // Continue processing instead of terminating connection
                     // This allows recovery from corrupted packets
                     continue;
@@ -489,30 +480,30 @@ public class ClientStream : IDisposable
         catch (OperationCanceledException)
         {
             // Normal shutdown
-            _logger?.LogDebug("Receive loop cancelled");
+            Logger.Debug("Receive loop cancelled");
         }
         catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
                                        (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
         {
             // Client disconnected unexpectedly (connection reset/aborted)
-            _logger?.LogDebug("Client disconnected unexpectedly (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            Logger.Debug($"Client disconnected unexpectedly (ErrorCode: {socketEx.ErrorCode})");
             _isConnected = false;
         }
         catch (SocketException socketEx) when (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053)
         {
             // Direct socket exception for connection reset/aborted
-            _logger?.LogDebug("Client connection reset (ErrorCode: {ErrorCode})", socketEx.ErrorCode);
+            Logger.Debug($"Client connection reset (ErrorCode: {socketEx.ErrorCode})");
             _isConnected = false;
         }
         catch (EndOfStreamException)
         {
             // Connection closed gracefully
-            _logger?.LogDebug("Client connection closed gracefully");
+            Logger.Debug("Client connection closed gracefully");
             _isConnected = false;
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Unexpected error in receive loop");
+            Logger.Error(ex, "Unexpected error in receive loop:");
             _isConnected = false;
         }
     }
@@ -537,7 +528,7 @@ public class ClientStream : IDisposable
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Error handling command {Command}", command.GetType().Name);
+            Logger.Error(ex, $"Error handling command {command.GetType().Name}:");
         }
     }
 

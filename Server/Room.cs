@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using PhiraMpServer.Common;
 
 namespace PhiraMpServer.Server;
@@ -273,7 +272,7 @@ public class Room
             }
         }
 
-        await CheckAllReadyAsync(null);
+        await CheckAllReadyAsync();
         return false;
     }
 
@@ -286,7 +285,7 @@ public class Room
         }
     }
 
-    public async Task CheckAllReadyAsync(ILogger? logger)
+    public async Task CheckAllReadyAsync()
     {
         switch (State)
         {
@@ -295,7 +294,7 @@ public class Room
                 var allUsers = GetAllUsers();
                 if (allUsers.All(u => waitState.Started.Contains(u.Id)))
                 {
-                    logger?.LogInformation("Room {RoomId} game start", Id);
+                    Logger.Info($"Room {Id} game start");
                     await SendAsync(new StartPlayingMessage());
                     ResetGameTime();
 
@@ -321,7 +320,7 @@ public class Room
 
                     if (Cycle && !CycleVotingMode)
                     {
-                        logger?.LogDebug("Room {RoomId} cycling", Id);
+                        Logger.Debug($"Room {Id} cycling");
 
                         var userList = users;
                         var currentHostIndex = userList.FindIndex(u => u.Id == Host.Id);
