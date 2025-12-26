@@ -1,5 +1,4 @@
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 
 namespace PhiraMpServer.Common;
@@ -274,7 +273,8 @@ public class ClientRoomState : IBinaryData
     public bool IsReady { get; set; }
     public Dictionary<int, UserInfo> Users { get; set; }
 
-    public ClientRoomState(RoomId id, RoomStateData state, bool live, bool locked, bool cycle, bool isHost, bool isReady, Dictionary<int, UserInfo> users)
+    public ClientRoomState(RoomId id, RoomStateData state, bool live, bool locked, bool cycle, bool isHost,
+        bool isReady, Dictionary<int, UserInfo> users)
     {
         Id = id;
         State = state;
@@ -363,16 +363,36 @@ public class ChatMessage : Message
     public override byte TypeTag => 0;
     public int User { get; set; }
     public string Content { get; set; }
-    public ChatMessage(int user, string content) { User = user; Content = content; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); writer.WriteString(Content); }
+
+    public ChatMessage(int user, string content)
+    {
+        User = user;
+        Content = content;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+        writer.WriteString(Content);
+    }
 }
 
 public class CreateRoomMessage : Message
 {
     public override byte TypeTag => 1;
     public int User { get; set; }
-    public CreateRoomMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public CreateRoomMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class JoinRoomMessage : Message
@@ -380,8 +400,19 @@ public class JoinRoomMessage : Message
     public override byte TypeTag => 2;
     public int User { get; set; }
     public string Name { get; set; }
-    public JoinRoomMessage(int user, string name) { User = user; Name = name; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); writer.WriteString(Name); }
+
+    public JoinRoomMessage(int user, string name)
+    {
+        User = user;
+        Name = name;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+        writer.WriteString(Name);
+    }
 }
 
 public class LeaveRoomMessage : Message
@@ -389,16 +420,36 @@ public class LeaveRoomMessage : Message
     public override byte TypeTag => 3;
     public int User { get; set; }
     public string Name { get; set; }
-    public LeaveRoomMessage(int user, string name) { User = user; Name = name; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); writer.WriteString(Name); }
+
+    public LeaveRoomMessage(int user, string name)
+    {
+        User = user;
+        Name = name;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+        writer.WriteString(Name);
+    }
 }
 
 public class NewHostMessage : Message
 {
     public override byte TypeTag => 4;
     public int User { get; set; }
-    public NewHostMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public NewHostMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class SelectChartMessage : Message
@@ -407,47 +458,103 @@ public class SelectChartMessage : Message
     public int User { get; set; }
     public string Name { get; set; }
     public int Id { get; set; }
-    public SelectChartMessage(int user, string name, int id) { User = user; Name = name; Id = id; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); writer.WriteString(Name); writer.WriteInt32(Id); }
+
+    public SelectChartMessage(int user, string name, int id)
+    {
+        User = user;
+        Name = name;
+        Id = id;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+        writer.WriteString(Name);
+        writer.WriteInt32(Id);
+    }
 }
 
 public class GameStartMessage : Message
 {
     public override byte TypeTag => 6;
     public int User { get; set; }
-    public GameStartMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public GameStartMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class ReadyMessage : Message
 {
     public override byte TypeTag => 7;
     public int User { get; set; }
-    public ReadyMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public ReadyMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class CancelReadyMessage : Message
 {
     public override byte TypeTag => 8;
     public int User { get; set; }
-    public CancelReadyMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public CancelReadyMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class CancelGameMessage : Message
 {
     public override byte TypeTag => 9;
     public int User { get; set; }
-    public CancelGameMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public CancelGameMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class StartPlayingMessage : Message
 {
     public override byte TypeTag => 10;
-    public StartPlayingMessage() { }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); }
+
+    public StartPlayingMessage()
+    {
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+    }
 }
 
 public class PlayedMessage : Message
@@ -457,39 +564,88 @@ public class PlayedMessage : Message
     public int Score { get; set; }
     public float Accuracy { get; set; }
     public bool FullCombo { get; set; }
-    public PlayedMessage(int user, int score, float accuracy, bool fullCombo) { User = user; Score = score; Accuracy = accuracy; FullCombo = fullCombo; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); writer.WriteInt32(Score); writer.WriteSingle(Accuracy); writer.WriteBool(FullCombo); }
+
+    public PlayedMessage(int user, int score, float accuracy, bool fullCombo)
+    {
+        User = user;
+        Score = score;
+        Accuracy = accuracy;
+        FullCombo = fullCombo;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+        writer.WriteInt32(Score);
+        writer.WriteSingle(Accuracy);
+        writer.WriteBool(FullCombo);
+    }
 }
 
 public class GameEndMessage : Message
 {
     public override byte TypeTag => 12;
-    public GameEndMessage() { }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); }
+
+    public GameEndMessage()
+    {
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+    }
 }
 
 public class AbortMessage : Message
 {
     public override byte TypeTag => 13;
     public int User { get; set; }
-    public AbortMessage(int user) { User = user; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteInt32(User); }
+
+    public AbortMessage(int user)
+    {
+        User = user;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteInt32(User);
+    }
 }
 
 public class LockRoomMessage : Message
 {
     public override byte TypeTag => 14;
     public bool Lock { get; set; }
-    public LockRoomMessage(bool lockState) { Lock = lockState; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Lock); }
+
+    public LockRoomMessage(bool lockState)
+    {
+        Lock = lockState;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Lock);
+    }
 }
 
 public class CycleRoomMessage : Message
 {
     public override byte TypeTag => 15;
     public bool Cycle { get; set; }
-    public CycleRoomMessage(bool cycle) { Cycle = cycle; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Cycle); }
+
+    public CycleRoomMessage(bool cycle)
+    {
+        Cycle = cycle;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Cycle);
+    }
 }
 
 // ============ Client Commands ============
@@ -501,13 +657,13 @@ public abstract class ClientCommand
     public static ClientCommand ReadBinary(BinaryReader reader)
     {
         var tag = reader.ReadByte();
-        
+
         // Validate tag range (0-15 are valid client commands)
         if (tag > 15)
         {
             throw new InvalidOperationException($"Invalid client command tag: {tag} (valid range: 0-15)");
         }
-        
+
         return tag switch
         {
             0 => new PingCommand(),
@@ -531,22 +687,147 @@ public abstract class ClientCommand
     }
 }
 
-public class PingCommand : ClientCommand { public override byte TypeTag => 0; }
-public class AuthenticateCommand : ClientCommand { public override byte TypeTag => 1; public Varchar Token { get; } public AuthenticateCommand(Varchar token) { Token = token; } }
-public class ChatCommand : ClientCommand { public override byte TypeTag => 2; public Varchar Message { get; } public ChatCommand(Varchar message) { Message = message; } }
-public class TouchesCommand : ClientCommand { public override byte TypeTag => 3; public List<TouchFrame> Frames { get; } public TouchesCommand(List<TouchFrame> frames) { Frames = frames; } }
-public class JudgesCommand : ClientCommand { public override byte TypeTag => 4; public List<JudgeEvent> Judges { get; } public JudgesCommand(List<JudgeEvent> judges) { Judges = judges; } }
-public class CreateRoomCommand : ClientCommand { public override byte TypeTag => 5; public RoomId Id { get; } public CreateRoomCommand(RoomId id) { Id = id; } }
-public class JoinRoomCommand : ClientCommand { public override byte TypeTag => 6; public RoomId Id { get; } public bool Monitor { get; } public JoinRoomCommand(RoomId id, bool monitor) { Id = id; Monitor = monitor; } }
-public class LeaveRoomCommand : ClientCommand { public override byte TypeTag => 7; }
-public class LockRoomCommand : ClientCommand { public override byte TypeTag => 8; public bool Lock { get; } public LockRoomCommand(bool lockState) { Lock = lockState; } }
-public class CycleRoomCommand : ClientCommand { public override byte TypeTag => 9; public bool Cycle { get; } public CycleRoomCommand(bool cycle) { Cycle = cycle; } }
-public class SelectChartCommand : ClientCommand { public override byte TypeTag => 10; public int Id { get; } public SelectChartCommand(int id) { Id = id; } }
-public class RequestStartCommand : ClientCommand { public override byte TypeTag => 11; }
-public class ReadyCommand : ClientCommand { public override byte TypeTag => 12; }
-public class CancelReadyCommand : ClientCommand { public override byte TypeTag => 13; }
-public class PlayedCommand : ClientCommand { public override byte TypeTag => 14; public int Id { get; } public PlayedCommand(int id) { Id = id; } }
-public class AbortCommand : ClientCommand { public override byte TypeTag => 15; }
+public class PingCommand : ClientCommand
+{
+    public override byte TypeTag => 0;
+}
+
+public class AuthenticateCommand : ClientCommand
+{
+    public override byte TypeTag => 1;
+    public Varchar Token { get; }
+
+    public AuthenticateCommand(Varchar token)
+    {
+        Token = token;
+    }
+}
+
+public class ChatCommand : ClientCommand
+{
+    public override byte TypeTag => 2;
+    public Varchar Message { get; }
+
+    public ChatCommand(Varchar message)
+    {
+        Message = message;
+    }
+}
+
+public class TouchesCommand : ClientCommand
+{
+    public override byte TypeTag => 3;
+    public List<TouchFrame> Frames { get; }
+
+    public TouchesCommand(List<TouchFrame> frames)
+    {
+        Frames = frames;
+    }
+}
+
+public class JudgesCommand : ClientCommand
+{
+    public override byte TypeTag => 4;
+    public List<JudgeEvent> Judges { get; }
+
+    public JudgesCommand(List<JudgeEvent> judges)
+    {
+        Judges = judges;
+    }
+}
+
+public class CreateRoomCommand : ClientCommand
+{
+    public override byte TypeTag => 5;
+    public RoomId Id { get; }
+
+    public CreateRoomCommand(RoomId id)
+    {
+        Id = id;
+    }
+}
+
+public class JoinRoomCommand : ClientCommand
+{
+    public override byte TypeTag => 6;
+    public RoomId Id { get; }
+    public bool Monitor { get; }
+
+    public JoinRoomCommand(RoomId id, bool monitor)
+    {
+        Id = id;
+        Monitor = monitor;
+    }
+}
+
+public class LeaveRoomCommand : ClientCommand
+{
+    public override byte TypeTag => 7;
+}
+
+public class LockRoomCommand : ClientCommand
+{
+    public override byte TypeTag => 8;
+    public bool Lock { get; }
+
+    public LockRoomCommand(bool lockState)
+    {
+        Lock = lockState;
+    }
+}
+
+public class CycleRoomCommand : ClientCommand
+{
+    public override byte TypeTag => 9;
+    public bool Cycle { get; }
+
+    public CycleRoomCommand(bool cycle)
+    {
+        Cycle = cycle;
+    }
+}
+
+public class SelectChartCommand : ClientCommand
+{
+    public override byte TypeTag => 10;
+    public int Id { get; }
+
+    public SelectChartCommand(int id)
+    {
+        Id = id;
+    }
+}
+
+public class RequestStartCommand : ClientCommand
+{
+    public override byte TypeTag => 11;
+}
+
+public class ReadyCommand : ClientCommand
+{
+    public override byte TypeTag => 12;
+}
+
+public class CancelReadyCommand : ClientCommand
+{
+    public override byte TypeTag => 13;
+}
+
+public class PlayedCommand : ClientCommand
+{
+    public override byte TypeTag => 14;
+    public int Id { get; }
+
+    public PlayedCommand(int id)
+    {
+        Id = id;
+    }
+}
+
+public class AbortCommand : ClientCommand
+{
+    public override byte TypeTag => 15;
+}
 
 // ============ Server Commands ============
 
@@ -559,7 +840,11 @@ public abstract class ServerCommand : IBinaryData
 public class PongCommand : ServerCommand
 {
     public override byte TypeTag => 0;
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+    }
 }
 
 public class AuthenticateResponseCommand : ServerCommand
@@ -807,8 +1092,18 @@ public class LockRoomResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public LockRoomResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public LockRoomResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class CycleRoomResponseCommand : ServerCommand
@@ -817,8 +1112,18 @@ public class CycleRoomResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public CycleRoomResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public CycleRoomResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class SelectChartResponseCommand : ServerCommand
@@ -827,8 +1132,18 @@ public class SelectChartResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public SelectChartResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public SelectChartResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class RequestStartResponseCommand : ServerCommand
@@ -837,8 +1152,18 @@ public class RequestStartResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public RequestStartResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public RequestStartResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class ReadyResponseCommand : ServerCommand
@@ -847,8 +1172,18 @@ public class ReadyResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public ReadyResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public ReadyResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class CancelReadyResponseCommand : ServerCommand
@@ -857,8 +1192,18 @@ public class CancelReadyResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public CancelReadyResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public CancelReadyResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class PlayedResponseCommand : ServerCommand
@@ -867,8 +1212,18 @@ public class PlayedResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public PlayedResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public PlayedResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }
 
 public class AbortResponseCommand : ServerCommand
@@ -877,6 +1232,16 @@ public class AbortResponseCommand : ServerCommand
     public bool Success { get; set; }
     public string? Error { get; set; }
 
-    public AbortResponseCommand(bool success, string? error = null) { Success = success; Error = error; }
-    public override void WriteBinary(BinaryWriter writer) { writer.WriteByte(TypeTag); writer.WriteBool(Success); if (!Success) writer.WriteString(Error!); }
+    public AbortResponseCommand(bool success, string? error = null)
+    {
+        Success = success;
+        Error = error;
+    }
+
+    public override void WriteBinary(BinaryWriter writer)
+    {
+        writer.WriteByte(TypeTag);
+        writer.WriteBool(Success);
+        if (!Success) writer.WriteString(Error!);
+    }
 }

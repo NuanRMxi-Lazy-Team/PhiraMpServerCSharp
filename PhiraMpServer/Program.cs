@@ -35,7 +35,7 @@ class Program
         using var server = new Server.PhiraMpServer(config);
 
         var cts = new CancellationTokenSource();
-        Console.CancelKeyPress += (s, e) =>
+        Console.CancelKeyPress += (_, e) =>
         {
             Logger.Info("Shutting down...");
             e.Cancel = true;

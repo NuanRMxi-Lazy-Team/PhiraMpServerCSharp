@@ -61,7 +61,7 @@ public class User
         lock (_lock)
         {
             SessionRef = new WeakReference<Session>(session);
-            DangleMark = new();
+            DangleMark = new object();
             _dangling = false;
         }
     }
@@ -360,6 +360,7 @@ public class Session : IDisposable
 
             // Broadcast user info so clients can map user ID to username
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
+            await Task.Delay(1); // Ensure message order
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 

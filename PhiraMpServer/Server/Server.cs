@@ -32,8 +32,8 @@ public class ServerConfig
                 var serializer = new SerializerBuilder()
                     .WithNamingConvention(UnderscoredNamingConvention.Instance)
                     .Build();
-                var yamlnew = serializer.Serialize(defaultConfig);
-                File.WriteAllText(path, yamlnew);
+                var yamlNew = serializer.Serialize(defaultConfig);
+                File.WriteAllText(path, yamlNew);
                 return new ServerConfig();
             }
                 
@@ -187,7 +187,7 @@ public class PhiraMpServer : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
-
+        GC.SuppressFinalize(this);
         Stop();
 
         foreach (var session in _state.Sessions.Values)

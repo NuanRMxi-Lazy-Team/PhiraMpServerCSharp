@@ -20,10 +20,9 @@ public static class DisconnectionHelper
     {
         return ex switch
         {
-            SocketException socketEx when socketEx.ErrorCode == 10054 => true, // Connection reset by peer
-            SocketException socketEx when socketEx.ErrorCode == 10053 => true, // Connection aborted
-            IOException ioEx when ioEx.InnerException is SocketException innerSocketEx &&
-                                  (innerSocketEx.ErrorCode == 10054 || innerSocketEx.ErrorCode == 10053) => true,
+            SocketException { ErrorCode: 10054 } => true, // Connection reset by peer
+            SocketException { ErrorCode: 10053 } => true, // Connection aborted
+            IOException { InnerException: SocketException { ErrorCode: 10054 or 10053 } } => true,
             EndOfStreamException => true, // Graceful disconnect
             _ => false
         };
