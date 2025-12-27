@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using PhiraMpServer.Common;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using PhiraMpServer.ExternalInterface.Common;
 
 namespace PhiraMpServer.Server;
 
@@ -17,6 +18,8 @@ public class ServerConfig
 {
     public string BindIp { get; set; } = "::";
     public int Port { get; set; } = 12346;
+    public string ExternalInterfaceIp { get; set; } = "127.0.0.1";
+    public int ExternalInterfacePort { get; set; } = 17181;
     public int RoomMaxPlayers { get; set; } = 8;
     public List<int> Monitors { get; set; } = new() { 2 };
     public bool CycleVotingMode { get; set; } = false;
@@ -36,7 +39,7 @@ public class ServerConfig
                 File.WriteAllText(path, yamlNew);
                 return new ServerConfig();
             }
-                
+
 
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(UnderscoredNamingConvention.Instance)
@@ -80,7 +83,7 @@ public class PhiraMpServer : IDisposable
     private readonly Task _lostConnectionTask;
     private bool _disposed;
 
-    public PhiraMpServer(ServerConfig? config = null)
+    public PhiraMpServer(ServerConfig? config = null, ExternalInterface.Server? externalInterfaceServer = null)
     {
         _cts = new CancellationTokenSource();
 
@@ -89,7 +92,7 @@ public class PhiraMpServer : IDisposable
 
         var bindAddress = IPAddress.Parse(config.BindIp);
         _listener = new TcpListener(bindAddress, config.Port);
-        
+
         // Enable dual-stack mode for IPv6
         if (bindAddress.AddressFamily == AddressFamily.InterNetworkV6)
         {
@@ -97,6 +100,32 @@ public class PhiraMpServer : IDisposable
         }
 
         _lostConnectionTask = Task.Run(ProcessLostConnections);
+
+        externalInterfaceServer?.OnCommandReceived += async command => await ExternalInterfaceHandler.CommandHandler(_state, command);
+        
+        /*async command =>
+        {
+            // Handle external interface commands here
+            switch (command)
+            {
+                case GetAllRoomCommand:
+                    var response = new GetAllRoomResponse()
+                    {
+                        RoomIdList = new List<string>(_state.Rooms.Keys)
+                    };
+                    return response;
+                case SetRoomMaxPlayersCommand maxPlayersCommand:
+                {
+                    _state.Config.RoomMaxPlayers = maxPlayersCommand.MaxPlayers;
+                    return new SetRoomMaxPlayersResponse { IsSuccess = true };
+                }
+                default:
+                    return new UnknowCommandResponse
+                    {
+                        Message = $"The command type {command.Type} is not recognized."
+                    };
+            }
+        };*/
     }
 
     public async Task StartAsync()

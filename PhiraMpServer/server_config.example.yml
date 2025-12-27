@@ -3,8 +3,14 @@
 # 绑定IP地址 ("::" 表示监听所有IPv4和IPv6地址)
 bind_ip: "::"
 
+# ExternalInterfaceIp
+external_interface_ip: "127.0.0.1"
+
 # 服务器端口
 port: 12346
+
+# ExternalInterfacePort
+external_interface_port: 17181
 
 # 房间最大玩家数
 room_max_players: 8

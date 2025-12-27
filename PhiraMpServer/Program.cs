@@ -14,6 +14,7 @@ class Program
         
         try
         {
+            await RunExternalInterfaceServerAsync();
             await RunServerAsync();
             return 0;
         }
@@ -24,7 +25,7 @@ class Program
         }
     }
 
-    static async Task RunServerAsync()
+    static async Task RunServerAsync(PhiraMpServer.ExternalInterface.Server? externalInterfaceServer = null)
     {
         var config = ServerConfig.Load();
 
@@ -32,7 +33,7 @@ class Program
         Logger.Info($"Bind IP: {config.BindIp}, Port: {config.Port}, Room Max Players: {config.RoomMaxPlayers}");
         Logger.Info("Press Ctrl+C to stop the server");
 
-        using var server = new Server.PhiraMpServer(config);
+        using var server = new Server.PhiraMpServer(config,externalInterfaceServer);
 
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
@@ -47,5 +48,17 @@ class Program
         await Task.WhenAny(serverTask, Task.Delay(Timeout.Infinite, cts.Token));
 
         Logger.Info("Server stopped");
+    }
+    
+    static async Task<PhiraMpServer.ExternalInterface.Server> RunExternalInterfaceServerAsync()
+    {
+        var config = ServerConfig.Load();
+        var externalInterfaceServer = new PhiraMpServer.ExternalInterface.Server(config.ExternalInterfaceIp, config.ExternalInterfacePort);
+        await externalInterfaceServer.StartAsync();
+        Logger.Info("External Interface Server started");
+        externalInterfaceServer.OnInfo = Logger.Info;
+        externalInterfaceServer.OnWarning = Logger.Warning;
+        externalInterfaceServer.OnError = Logger.Error;
+        return externalInterfaceServer;
     }
 }
