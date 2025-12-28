@@ -30,19 +30,10 @@ public static class CommandDispatcherExtensions
             // 检查每个命令类型
             foreach (var commandType in commandTypes)
             {
-                // 尝试分发测试命令以查看处理器是否存在
-                var testCommand = Activator.CreateInstance(commandType) as Command;
-                if (testCommand != null)
+                // 使用 HasHandlerForCommand 方法检查处理器是否存在，而不实际执行命令
+                if (!dispatcher.HasHandlerForCommand(commandType))
                 {
-                    testCommand.Token = "__VALIDATION__";
-                    var result = dispatcher.DispatchAsync(testCommand).Result;
-                
-                    // 如果结果是 UnknowCommandResponse，则表示处理器缺失
-                    if (result is UnknowCommandResponse unknownResponse && 
-                        unknownResponse.Message.Contains("No handler registered"))
-                    {
-                        missingHandlers.Add(commandType);
-                    }
+                    missingHandlers.Add(commandType);
                 }
             }
 
@@ -81,6 +72,7 @@ public static class CommandHandlerConfiguration
         // 注册所有处理器
         dispatcher.RegisterHandler(new AuthenticateHandler(serverState));
         dispatcher.RegisterHandler(new GetAllRoomHandler(serverState));
+        dispatcher.RegisterHandler(new GetRoomHandler(serverState));
         dispatcher.RegisterHandler(new SetServerRoomMaxPlayersHandler(serverState));
         dispatcher.RegisterHandler(new GetServerStatusHandler(serverState, startTime));
         dispatcher.RegisterHandler(new GetAllPlayersHandler(serverState));

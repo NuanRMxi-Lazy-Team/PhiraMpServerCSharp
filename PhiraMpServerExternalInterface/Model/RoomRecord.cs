@@ -20,6 +20,8 @@ public record RoomRecord
     public int[] SelectedCharts { get; init; } = [];
     [ProtoMember(8)]
     public Dictionary<int,bool> ReadyInfo {get; init; } = new();
+    [ProtoMember(9)]
+    public int[] Monitors { get; init; } = [];
 }
 
 [ProtoContract]

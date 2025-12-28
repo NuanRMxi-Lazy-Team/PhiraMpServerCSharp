@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
@@ -7,6 +8,7 @@ using PhiraMpServer.ExternalInterface.Common;
 using PhiraMpServer.ExternalInterface.Model;
 
 namespace PhiraMpServer.Server;
+
 public class GetAllRoomHandler : ICommandHandler<GetAllRoomCommand, GetAllRoomResponse>
 {
     private readonly ServerState _serverState;
@@ -18,40 +20,72 @@ public class GetAllRoomHandler : ICommandHandler<GetAllRoomCommand, GetAllRoomRe
 
     public Task<GetAllRoomResponse> HandleAsync(GetAllRoomCommand command)
     {
-        var rspRoomList = _serverState.Rooms.Select(room => new RoomRecord
-        {
-            RoomId = room.Key,
-            Players = room.Value.GetAllUsers().Select(u => u.Id).ToArray(),
-            Host = room.Value.Host.Id,
-            IsLocked = room.Value.Locked,
-            State = room.Value.State switch
-            {
-                InternalRoomState.SelectChart => RoomState.SelectChart,
-                InternalRoomState.WaitForReady => RoomState.WaitingForReady,
-                InternalRoomState.Playing => RoomState.Playing,
-                _ => RoomState.SelectChart
-            },
-            Type = room.Value is { Cycle: true, CycleVotingMode: true } ? RoomType.Voting :
-                room.Value.Cycle ? RoomType.Cycle : RoomType.Normal,
-            SelectedCharts = room.Value is { Cycle: true, CycleVotingMode: true }
-                ?
-                room.Value.ChartVotes.Keys.ToArray()
-                :
-                room.Value.Chart == null
-                    ? []
-                    : [room.Value.Chart.Id],
-            ReadyInfo = room.Value.GetUserReadyStates()
-        }).ToList();
-
         return Task.FromResult(new GetAllRoomResponse
         {
             Token = command.Token,
-            RoomIdList = rspRoomList
+            RoomIdList = _serverState.Rooms.Select(room => room.Key).ToArray(),
         });
     }
 }
 
-public class SetServerRoomMaxPlayersHandler : ICommandHandler<SetServerRoomMaxPlayersCommand, SetServerRoomMaxPlayersResponse>
+public class GetRoomHandler : ICommandHandler<GetRoomCommand, GetRoomResponse>
+{
+    private readonly ServerState _serverState;
+
+    public GetRoomHandler(ServerState serverState)
+    {
+        _serverState = serverState ?? throw new ArgumentNullException(nameof(serverState));
+    }
+
+    public Task<GetRoomResponse> HandleAsync(GetRoomCommand command)
+    {
+        var room = _serverState.Rooms.GetValueOrDefault(command.RoomId);
+        if (room == null)
+        {
+            return Task.FromResult(new GetRoomResponse
+            {
+                Token = command.Token,
+                RoomInfo = null
+            });
+        }
+        else
+        {
+            return Task.FromResult(new GetRoomResponse
+                {
+                    Token = command.Token,
+                    RoomInfo = new RoomRecord
+                    {
+                        RoomId = room.Id.Value,
+                        Players = room.GetUsers().Select(u => u.Id).ToArray(),
+                        Monitors = room.GetMonitors().Select(u => u.Id).ToArray(),
+                        Host = room.Host.Id,
+                        IsLocked = room.Locked,
+                        State = room.State switch
+                        {
+                            InternalRoomState.SelectChart => RoomState.SelectChart,
+                            InternalRoomState.WaitForReady => RoomState.WaitingForReady,
+                            InternalRoomState.Playing => RoomState.Playing,
+                            _ => RoomState.SelectChart
+                        },
+                        Type = room is { Cycle: true, CycleVotingMode: true } ? RoomType.Voting :
+                            room.Cycle ? RoomType.Cycle : RoomType.Normal,
+                        SelectedCharts = room.State is InternalRoomState.Playing
+                            ? [room.Chart!.Id]
+                            : room is { Cycle: true, CycleVotingMode: true }
+                                ? room.ChartVotes.Values.Select(c => c.Id).ToArray()
+                                : room.Chart == null
+                                    ? []
+                                    : [room.Chart.Id],
+                        ReadyInfo = room.GetUserReadyStates()
+                    }
+                }
+            );
+        }
+    }
+}
+
+public class
+    SetServerRoomMaxPlayersHandler : ICommandHandler<SetServerRoomMaxPlayersCommand, SetServerRoomMaxPlayersResponse>
 {
     private readonly ServerState _serverState;
 
@@ -126,7 +160,8 @@ public class GetServerStatusHandler : ICommandHandler<GetServerStatusCommand, Ge
             Token = command.Token,
             Uptime = DateTime.Now - _startTime,
             MaxPlayers = _serverState.Config.ServerMaxPlayers,
-            CurrentPlayers = _serverState.Sessions.Count
+            CurrentPlayers = _serverState.Sessions.Count,
+            ExternalAddress = _serverState.Config.ExternalAddress
         });
     }
 }
@@ -149,4 +184,3 @@ public class GetAllPlayersHandler : ICommandHandler<GetAllPlayerCommand, GetAllP
         });
     }
 }
-

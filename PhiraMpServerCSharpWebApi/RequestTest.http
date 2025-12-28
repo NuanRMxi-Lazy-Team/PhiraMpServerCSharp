@@ -71,6 +71,18 @@ Accept: application/json
 
 ###
 
+### 8.1 GET - 获取指定服务器的详细状态信息 (Server1)
+GET {{apiUrl}}/server/Server1/details
+Accept: application/json
+
+###
+
+### 8.2 GET - 获取指定服务器的详细状态信息 (Server2)
+GET {{apiUrl}}/server/Server2/details
+Accept: application/json
+
+###
+
 ### 9. PUT - 设置 Server1 的全局房间最大玩家数
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
@@ -123,23 +135,59 @@ Accept: application/json
 
 ###
 
+### 14.1 GET - 获取指定服务器的指定房间详细信息 (Server1)
+# 需要替换 roomId 为实际的房间ID
+GET {{apiUrl}}/room/Server1/room-id-example
+Accept: application/json
+
+###
+
+### 14.2 GET - 获取指定服务器的指定房间详细信息 (Server2)
+# 需要替换 roomId 为实际的房间ID
+GET {{apiUrl}}/room/Server2/room-id-example
+Accept: application/json
+
+###
+
+### ============================================
+### PlayerController - 玩家管理
+### ============================================
+
+### 15. GET - 获取所有服务器的玩家列表
+GET {{apiUrl}}/player
+Accept: application/json
+
+###
+
+### 16. GET - 获取指定服务器的玩家列表 (Server1)
+GET {{apiUrl}}/player/Server1
+Accept: application/json
+
+###
+
+### 17. GET - 获取指定服务器的玩家列表 (Server2)
+GET {{apiUrl}}/player/Server2
+Accept: application/json
+
+###
+
 ### ============================================
 ### 错误处理测试
 ### ============================================
 
-### 15. GET - 获取不存在的服务器的连接状态
+### 18. GET - 获取不存在的服务器的连接状态
 GET {{apiUrl}}/server/NonExistentServer/status
 Accept: application/json
 
 ###
 
-### 16. GET - 获取不存在的服务器的房间信息
+### 19. GET - 获取不存在的服务器的房间信息
 GET {{apiUrl}}/room/NonExistentServer
 Accept: application/json
 
 ###
 
-### 17. PUT - 设置无效的最大玩家数 (0)
+### 20. PUT - 设置无效的最大玩家数 (0)
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -149,7 +197,7 @@ Content-Type: application/json
 
 ###
 
-### 18. PUT - 设置无效的最大玩家数 (负数)
+### 21. PUT - 设置无效的最大玩家数 (负数)
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -159,7 +207,7 @@ Content-Type: application/json
 
 ###
 
-### 19. 测试: 无效的 JSON 格式
+### 22. 测试: 无效的 JSON 格式
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -169,7 +217,7 @@ Content-Type: application/json
 
 ###
 
-### 20. 测试: 缺少必需字段
+### 23. 测试: 缺少必需字段
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -182,19 +230,19 @@ Content-Type: application/json
 ### 综合测试场景
 ### ============================================
 
-### 21. 测试流程: 检查所有服务器连接状态
+### 24. 测试流程: 检查所有服务器连接状态
 GET {{apiUrl}}/server/status
 Accept: application/json
 
-### 22. 测试流程: 获取所有服务器的房间信息
+### 25. 测试流程: 获取所有服务器的房间信息
 GET {{apiUrl}}/room
 Accept: application/json
 
-### 23. 测试流程: 获取 Server1 的房间信息
+### 26. 测试流程: 获取 Server1 的房间信息
 GET {{apiUrl}}/room/Server1
 Accept: application/json
 
-### 24. 测试流程: 设置 Server1 的最大玩家数
+### 27. 测试流程: 设置 Server1 的最大玩家数
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -202,7 +250,7 @@ Content-Type: application/json
   "maxPlayers": 12
 }
 
-### 25. 测试流程: 再次获取 Server1 的房间信息验证设置
+### 28. 测试流程: 再次获取 Server1 的房间信息验证设置
 GET {{apiUrl}}/room/Server1
 Accept: application/json
 
@@ -212,7 +260,7 @@ Accept: application/json
 ### 边界测试
 ### ============================================
 
-### 26. 边界测试: 设置最小玩家数 (1)
+### 29. 边界测试: 设置最小玩家数 (1)
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -222,7 +270,7 @@ Content-Type: application/json
 
 ###
 
-### 27. 边界测试: 设置较大的玩家数 (100)
+### 30. 边界测试: 设置较大的玩家数 (100)
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -232,7 +280,7 @@ Content-Type: application/json
 
 ###
 
-### 28. 边界测试: 同时设置所有服务器的最大玩家数
+### 31. 边界测试: 同时设置所有服务器的最大玩家数
 PUT {{apiUrl}}/server/maxplayers
 Content-Type: application/json
 
@@ -246,13 +294,13 @@ Content-Type: application/json
 ### 性能测试
 ### ============================================
 
-### 29. 连续获取所有服务器房间信息 (可以多次执行)
+### 32. 连续获取所有服务器房间信息 (可以多次执行)
 GET {{apiUrl}}/room
 Accept: application/json
 
 ###
 
-### 30. 连续设置指定服务器的最大玩家数
+### 33. 连续设置指定服务器的最大玩家数
 PUT {{apiUrl}}/server/Server1/maxplayers
 Content-Type: application/json
 
@@ -266,7 +314,7 @@ Content-Type: application/json
 ### Swagger UI
 ### ============================================
 
-### 31. 打开 Swagger UI (在浏览器中)
+### 34. 打开 Swagger UI (在浏览器中)
 # {{baseUrl}}/swagger
 
 ###
@@ -308,12 +356,18 @@ Content-Type: application/json
 # ServerController (服务器管理):
 # - GET  /api/server/status                    - 获取所有服务器的连接状态
 # - GET  /api/server/{serverName}/status       - 获取指定服务器的连接状态
+# - GET  /api/server/{serverName}/details      - 获取指定服务器的详细状态信息
 # - PUT  /api/server/{serverName}/maxplayers   - 设置指定服务器的最大玩家数
 # - PUT  /api/server/maxplayers                - 设置所有服务器的最大玩家数
 #
 # RoomController (房间管理):
 # - GET  /api/room                             - 获取所有服务器的房间信息
 # - GET  /api/room/{serverName}                - 获取指定服务器的房间信息
+# - GET  /api/room/{serverName}/{roomId}       - 获取指定服务器的指定房间详细信息
+#
+# PlayerController (玩家管理):
+# - GET  /api/player                           - 获取所有服务器的玩家列表
+# - GET  /api/player/{serverName}              - 获取指定服务器的玩家列表
 #
 # 快捷键:
 # - Ctrl + Enter: 执行当前请求

@@ -9,6 +9,7 @@ namespace PhiraMpServer.ExternalInterface.Common;
 [ProtoInclude(102, typeof(AuthenticateResponse))]
 [ProtoInclude(103, typeof(GetServerStatusResponse))]
 [ProtoInclude(104, typeof(GetAllPlayerResponse))]
+[ProtoInclude(105, typeof(GetRoomResponse))]
 [ProtoInclude(999, typeof(UnknowCommandResponse))]
 public abstract class CommandResponse
 {
@@ -18,7 +19,13 @@ public abstract class CommandResponse
 [ProtoContract]
 public class GetAllRoomResponse : CommandResponse
 {
-    [ProtoMember(2)] public List<RoomRecord> RoomIdList { get; set; } = [];
+    [ProtoMember(2)] public string[] RoomIdList { get; set; } = [];
+}
+
+[ProtoContract]
+public class GetRoomResponse : CommandResponse
+{
+    [ProtoMember(2)] public RoomRecord? RoomInfo { get; set; }
 }
 
 [ProtoContract]
@@ -47,6 +54,7 @@ public class GetServerStatusResponse : CommandResponse
     [ProtoMember(2)] public TimeSpan Uptime { get; set; }
     [ProtoMember(3)] public int MaxPlayers { get; set; }
     [ProtoMember(4)] public int CurrentPlayers { get; set; }
+    [ProtoMember(5)] public string ExternalAddress { get; set; } = string.Empty;
 }
 
 [ProtoContract]

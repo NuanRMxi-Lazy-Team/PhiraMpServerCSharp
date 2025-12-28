@@ -8,6 +8,7 @@ namespace PhiraMpServer.ExternalInterface.Common;
 [ProtoInclude(102, typeof(AuthenticateCommand))]
 [ProtoInclude(103, typeof(GetServerStatusCommand))]
 [ProtoInclude(104, typeof(GetAllPlayerCommand))]
+[ProtoInclude(105, typeof(GetRoomCommand))]
 public abstract class Command
 {
     [ProtoMember(1)]
@@ -23,6 +24,13 @@ public class AuthenticateCommand : Command
 
 [ProtoContract]
 public class GetAllRoomCommand : Command;
+
+[ProtoContract]
+public class GetRoomCommand : Command
+{
+    [ProtoMember(2)]
+    public string RoomId { get; set; } = string.Empty;
+}
 
 [ProtoContract]
 public class SetServerRoomMaxPlayersCommand : Command

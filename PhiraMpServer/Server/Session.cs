@@ -8,6 +8,9 @@ using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using PhiraMpServer.Common;
+using PhiraMpServer.ExternalInterface.Common;
+using PhiraMpServer.ExternalInterface.Model;
+using AuthenticateCommand = PhiraMpServer.Common.AuthenticateCommand;
 
 namespace PhiraMpServer.Server;
 
@@ -207,7 +210,7 @@ public class Session : IDisposable
         {
             if (!_authenticated)
             {
-                if (cmd is AuthenticateCommand authCmd)
+                if (cmd is Common.AuthenticateCommand authCmd)
                 {
                     return await AuthenticateAsync(authCmd);
                 }
@@ -364,6 +367,14 @@ public class Session : IDisposable
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 
+            // Send RoomsChangedMessage to external interface
+            if (Server.ExternalInterfaceServer != null)
+            {
+                var roomList = Server.Rooms.Keys.ToArray();
+                var roomsChangedMessage = new RoomsChangedMessage { RoomList = roomList };
+                await Server.ExternalInterfaceServer.BroadcastAsync(roomsChangedMessage);
+            }
+
             Logger.Info($"User {User.Id} created room {cmd.Id}");
             return new CreateRoomResponseCommand(true);
         }
@@ -428,9 +439,22 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             Logger.Info($"User {User.Id} left room {room.Id}");
 
-            if (await room.OnUserLeaveAsync(User))
+            var shouldRemoveRoom = await room.OnUserLeaveAsync(User);
+            if (shouldRemoveRoom)
             {
+                // Send RoomChangedMessage to notify WebSocket clients that the room is being dissolved
+                // before removing the room from the server
+                await room.SendRoomChangedMessageAsync();
+                
                 Server.Rooms.TryRemove(room.Id.Value, out _);
+                
+                // Send RoomsChangedMessage to external interface when room is removed
+                if (Server.ExternalInterfaceServer != null)
+                {
+                    var roomList = Server.Rooms.Keys.ToArray();
+                    var roomsChangedMessage = new RoomsChangedMessage { RoomList = roomList };
+                    await Server.ExternalInterfaceServer.BroadcastAsync(roomsChangedMessage);
+                }
             }
 
             return new LeaveRoomResponseCommand(true);
@@ -452,6 +476,9 @@ public class Session : IDisposable
 
             room.Locked = cmd.Lock;
             await room.SendAsync(new LockRoomMessage(cmd.Lock));
+            
+            // Send RoomChangedMessage when room lock status changes
+            await room.SendRoomChangedMessageAsync();
 
             return new LockRoomResponseCommand(true);
         }
@@ -503,11 +530,11 @@ public class Session : IDisposable
 
             Logger.Debug($"Chart is {chart.Name} (ID: {chart.Id})");
 
-            if (room.Cycle && room.CycleVotingMode)
+            if (room is { Cycle: true, CycleVotingMode: true })
             {
-                // In Cycle mode with voting enabled, store the vote
+                // 当前为循环模式且启用投票时，存储投票
                 room.VoteChart(User, chart);
-                // Also set as current chart so clients know a chart is selected
+                // 也设置为当前谱面以便客户端知道已选择谱面
                 room.Chart = chart;
                 await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
                 await room.OnStateChangeAsync();
@@ -515,7 +542,7 @@ public class Session : IDisposable
             }
             else
             {
-                // In normal mode or Cycle without voting, host directly sets the chart
+                // 当前为普通模式或循环模式但未启用投票时，直接设置谱面
                 await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
                 room.Chart = chart;
                 await room.OnStateChangeAsync();
@@ -536,13 +563,13 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             if (room.State is not InternalRoomState.SelectChart)
                 throw new Exception("Invalid state");
-            //if (room.GetAllUsers().Count < 2)
-            //    throw new Exception("If no one is looking for you to play, you can go out and relax.");
+            if (room.GetAllUsers().Count < 2)
+                throw new Exception("If no one is looking for you to play, you can go out and relax.");
 
             room.CheckHost(User);
 
             // In Cycle mode with voting enabled, randomly select a chart from votes
-            if (room.Cycle && room.CycleVotingMode)
+            if (room is { Cycle: true, CycleVotingMode: true })
             {
                 var selectedChart = room.SelectRandomChartFromVotes();
                 if (selectedChart == null)
@@ -553,12 +580,9 @@ public class Session : IDisposable
                 
                 // Revoke fake host status from all non-host users
                 var users = room.GetUsers();
-                foreach (var user in users)
+                foreach (var user in users.Where(user => !room.IsHost(user)))
                 {
-                    if (!room.IsHost(user))
-                    {
-                        await user.TrySendAsync(new ChangeHostCommand(false));
-                    }
+                    await user.TrySendAsync(new ChangeHostCommand(false));
                 }
                 
                 // Clear votes for next round
@@ -578,7 +602,7 @@ public class Session : IDisposable
             room.ResetGameTime();
             await room.SendAsync(new GameStartMessage(User.Id));
 
-            room.State = new InternalRoomState.WaitForReady { Started = new HashSet<int> { User.Id } };
+            room.State = new InternalRoomState.WaitForReady { Started = [User.Id] };
             await room.OnStateChangeAsync();
             await room.CheckAllReadyAsync();
 
@@ -603,6 +627,9 @@ public class Session : IDisposable
 
                 await room.SendAsync(new ReadyMessage(User.Id));
                 await room.CheckAllReadyAsync();
+                
+                // Send RoomChangedMessage when user ready state changes
+                await room.SendRoomChangedMessageAsync();
             }
 
             return new ReadyResponseCommand(true);
@@ -646,6 +673,9 @@ public class Session : IDisposable
                 {
                     await room.SendAsync(new CancelReadyMessage(User.Id));
                 }
+                
+                // Send RoomChangedMessage when user ready state changes
+                await room.SendRoomChangedMessageAsync();
             }
 
             return new CancelReadyResponseCommand(true);

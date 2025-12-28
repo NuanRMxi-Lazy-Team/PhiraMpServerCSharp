@@ -49,13 +49,22 @@ public class CommandDispatcher : ICommandDispatcher
                 throw new InvalidOperationException($"HandleAsync method not found on handler for {commandType.Name}");
             }
 
-            var task = handleMethod.Invoke(handlerObj, new object[] { command }) as Task<CommandResponse>;
-            if (task == null)
+            var taskObj = handleMethod.Invoke(handlerObj, [command]);
+            if (taskObj == null)
             {
-                throw new InvalidOperationException($"Handler for {commandType.Name} did not return a Task<CommandResponse>");
+                throw new InvalidOperationException($"Handler for {commandType.Name} returned null");
             }
 
-            var response = await task;
+            // Get the Task result dynamically
+            var taskType = taskObj.GetType();
+            if (!taskType.IsGenericType || taskType.GetGenericTypeDefinition() != typeof(Task<>))
+            {
+                throw new InvalidOperationException($"Handler for {commandType.Name} did not return a Task<T>");
+            }
+
+            // Await the task dynamically
+            dynamic dynamicTask = taskObj;
+            var response = await dynamicTask as CommandResponse;
             
             // Ensure token is preserved
             if (response != null && string.IsNullOrWhiteSpace(response.Token))
@@ -77,6 +86,11 @@ public class CommandDispatcher : ICommandDispatcher
                 Message = $"Error handling command {commandType.Name}: {ex.Message}"
             };
         }
+    }
+
+    public bool HasHandlerForCommand(Type commandType)
+    {
+        return _handlers.ContainsKey(commandType);
     }
 }
 

@@ -2,7 +2,8 @@
 
 # 绑定IP地址 ("::" 表示监听所有IPv4和IPv6地址)
 bind_ip: "::"
-
+# 他人连接服务器时使用的地址（这个主要是给外部接口提供的，方便玩家获得服务器地址，注意，是服务器端口，不是外部接口的端口）
+external_address: "127.0.0.1:12346"
 # 服务器端口
 port: 12346
 
@@ -12,7 +13,7 @@ room_max_players: 8
 # 服务器最大玩家数
 server_max_players: 512
 
-# 监控用户ID列表
+# 旁观者用户ID列表
 monitors:
   - 2
 
@@ -22,6 +23,8 @@ enable_external_interface: true
 external_interface_ip: "127.0.0.1"
 # 外部接口端口
 external_interface_port: 17181
+# 外部接口鉴权密钥
+external_interface_token: "abcdefghigklmnopqrn"
 
 # Cycle模式投票功能 (true: 启用, false: 禁用)
 # 注意：此配置仅在房间开启Cycle模式时生效

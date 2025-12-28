@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using PhiraMpServer.Common;
+using PhiraMpServer.ExternalInterface.Common;
+using PhiraMpServer.ExternalInterface.Model;
+using RoomState = PhiraMpServer.Common.RoomState;
 
 namespace PhiraMpServer.Server;
 
@@ -108,18 +111,21 @@ public class Room
             return;
         }
         Cycle = cycle;
+        
+        // Send RoomChangedMessage when cycle mode changes
+        _ = Task.Run(async () => await SendRoomChangedMessageAsync());
     }
 
     public void CheckCanSelectChart(User user)
     {
-        // Only in Cycle mode with voting enabled, all users can select charts
+        // 仅在启用投票的循环模式下，所有用户都可以选择谱面
         if (Cycle && CycleVotingMode)
         {
             return;
         }
         else
         {
-            // In normal mode or Cycle without voting, only host can select
+            // 否则只能host选择谱面
             CheckHost(user);
         }
     }
@@ -169,6 +175,42 @@ public class Room
     public async Task OnStateChangeAsync()
     {
         await BroadcastAsync(new ChangeStateCommand(GetClientRoomState()));
+        await SendRoomChangedMessageAsync();
+    }
+
+    public async Task SendRoomChangedMessageAsync()
+    {
+        if (Host?.Server?.ExternalInterfaceServer != null)
+        {
+            var roomRecord = new RoomRecord
+            {
+                RoomId = Id.Value,
+                Players = GetUsers().Select(u => u.Id).ToArray(),
+                Monitors = GetMonitors().Select(u => u.Id).ToArray(),
+                Host = Host.Id,
+                IsLocked = Locked,
+                State = State switch
+                {
+                    InternalRoomState.SelectChart => ExternalInterface.Model.RoomState.SelectChart,
+                    InternalRoomState.WaitForReady => ExternalInterface.Model.RoomState.WaitingForReady,
+                    InternalRoomState.Playing => ExternalInterface.Model.RoomState.Playing,
+                    _ => ExternalInterface.Model.RoomState.SelectChart
+                },
+                Type = this is { Cycle: true, CycleVotingMode: true } ? RoomType.Voting :
+                    Cycle ? RoomType.Cycle : RoomType.Normal,
+                SelectedCharts = State is InternalRoomState.Playing
+                    ? [Chart!.Id]
+                    : this is { Cycle: true, CycleVotingMode: true }
+                        ? ChartVotes.Values.Select(c => c.Id).ToArray()
+                        : Chart == null
+                            ? []
+                            : [Chart.Id],
+                ReadyInfo = GetUserReadyStates()
+            };
+            
+            var message = new RoomChangedMessage { Room = roomRecord };
+            await Host.Server.ExternalInterfaceServer.BroadcastAsync(message);
+        }
     }
 
     public bool AddUser(User user, bool monitor)
@@ -179,7 +221,6 @@ public class Room
             {
                 _monitors.RemoveAll(u => u == null);
                 _monitors.Add(user);
-                return true;
             }
             else
             {
@@ -188,8 +229,8 @@ public class Room
                     return false;
 
                 _users.Add(user);
-                return true;
             }
+            return true;
         }
     }
 
@@ -277,6 +318,10 @@ public class Room
         }
 
         await CheckAllReadyAsync();
+        
+        // Send RoomChangedMessage when user leaves
+        await SendRoomChangedMessageAsync();
+        
         return false;
     }
 
@@ -321,14 +366,14 @@ public class Room
                 var allUsers = GetAllUsers();
                 if (allUsers.All(u => waitState.Started.Contains(u.Id)))
                 {
-                    Logger.Info($"Room {Id} game start");
+                    Logger.Info($"Room {Id} game start, Chart: {Chart?.Name ?? "N/A"}");
                     await SendAsync(new StartPlayingMessage());
                     ResetGameTime();
 
                     State = new InternalRoomState.Playing
                     {
                         Results = new Dictionary<int, RecordInfo>(),
-                        Aborted = new HashSet<int>()
+                        Aborted = []
                     };
 
                     await OnStateChangeAsync();
@@ -365,17 +410,17 @@ public class Room
                     {
                         Chart = null;
                         ClearVotes();
-                        // 告诉所有客户端你是host（除了真host）
-                        foreach (var user in users)
+                        // 使所有用户都认为自己是host
+                        foreach (var user in users.Where(user => !IsHost(user)))
                         {
-                            if (!IsHost(user))
-                            {
-                                user.TrySendAsync(new ChangeHostCommand(true)).Wait();
-                            }
+                            user.TrySendAsync(new ChangeHostCommand(true)).Wait();
                         }
                     }
 
                     await OnStateChangeAsync();
+                    
+                    // Explicitly send RoomChangedMessage after game ends
+                    await SendRoomChangedMessageAsync();
                 }
                 break;
             }

@@ -224,10 +224,18 @@ public class Client : IDisposable
             using var ms = new MemoryStream(data);
 
             // 尝试反序列化为 CommandResponse
+            ms.Position = 0;
+            var initialPosition = ms.Position;
+            var buffer = new byte[4]; // 读取少量数据来检查类型
+            var read = ms.Read(buffer, 0, Math.Min(4, (int)(ms.Length - initialPosition)));
+            ms.Position = initialPosition; // 重置位置
+
+            // 尝试反序列化为 CommandResponse
             try
             {
                 var resp = Serializer.Deserialize<CommandResponse>(ms);
-                if (resp != null)
+                // 检查是否为有效的 CommandResponse（有Token的通常是有意义的响应）
+                if (resp != null && !string.IsNullOrEmpty(resp.Token))
                 {
                     OnInfo.Invoke($"Received response for {resp.GetType()} (token: {resp.Token})");
                     OnResponseReceived.Invoke(resp);
@@ -238,24 +246,35 @@ public class Client : IDisposable
                         OnWarning.Invoke($"No pending request for token {resp.Token}");
                     return;
                 }
+                else
+                {
+                    // 如果反序列化成功但Token为空，说明这不是一个CommandResponse，需要重置流位置
+                    ms.Position = initialPosition;
+                }
             }
             catch
             {
                 // 如果不是 CommandResponse，尝试反序列化为 ServerMessages
-                ms.Position = 0;
+                ms.Position = initialPosition;
             }
 
             // 尝试反序列化为 ServerMessages
-            var serverMsg = Serializer.Deserialize<ServerMessages>(ms);
-            if (serverMsg != null)
+            try
             {
-                OnInfo.Invoke($"Received server message: {serverMsg.GetType()}");
-                OnServerMessageReceived.Invoke(serverMsg);
+                var serverMsg = Serializer.Deserialize<ServerMessages>(ms);
+                if (serverMsg != null)
+                {
+                    OnInfo.Invoke($"Received server message: {serverMsg.GetType()}");
+                    OnServerMessageReceived.Invoke(serverMsg);
+                    return;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                OnWarning.Invoke("Deserialize failed for both CommandResponse and ServerMessages");
+                OnWarning.Invoke($"Failed to deserialize as ServerMessages: {ex.Message}");
             }
+
+            OnWarning.Invoke("Deserialize failed for both CommandResponse and ServerMessages");
         }
         catch (Exception ex)
         {

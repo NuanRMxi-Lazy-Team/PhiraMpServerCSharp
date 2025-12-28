@@ -1,20 +1,24 @@
-﻿namespace PhiraMpServer.ExternalInterface.Common;
+using System;
+using System.Threading.Tasks;
 
-/// <summary>
-/// Command dispatcher interface for routing commands to their handlers
-/// </summary>
+namespace PhiraMpServer.ExternalInterface.Common;
+
 public interface ICommandDispatcher
 {
     /// <summary>
-    /// Register a handler for a specific command type
+    /// 注册特定命令类型的处理器
     /// </summary>
     void RegisterHandler<TCommand, TResponse>(ICommandHandler<TCommand, TResponse> handler) 
         where TCommand : Command 
         where TResponse : CommandResponse;
     
     /// <summary>
-    /// Dispatch a command to its registered handler
+    /// 分发命令到其注册的处理器
     /// </summary>
     Task<CommandResponse> DispatchAsync(Command command);
+    
+    /// <summary>
+    /// 检查指定命令类型是否有已注册的处理器
+    /// </summary>
+    bool HasHandlerForCommand(Type commandType);
 }
-

@@ -6,13 +6,13 @@ namespace PhiraMpServerCSharpWebApi.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class RoomController : ControllerBase
+public class PlayerController : ControllerBase
 {
-    private readonly ILogger<RoomController> _logger;
+    private readonly ILogger<PlayerController> _logger;
     private readonly PhiraMpClientService _clientService;
 
-    public RoomController(
-        ILogger<RoomController> logger,
+    public PlayerController(
+        ILogger<PlayerController> logger,
         PhiraMpClientService clientService)
     {
         _logger = logger;
@@ -20,10 +20,10 @@ public class RoomController : ControllerBase
     }
 
     /// <summary>
-    /// 获取所有服务器的房间信息
+    /// 获取所有服务器的玩家列表
     /// </summary>
     [HttpGet]
-    public async Task<IActionResult> GetAllRooms()
+    public async Task<IActionResult> GetAllPlayers()
     {
         try
         {
@@ -43,16 +43,16 @@ public class RoomController : ControllerBase
                         continue;
                     }
 
-                    var command = new GetAllRoomCommand();
+                    var command = new GetAllPlayerCommand();
                     var response = await client.SendCommandAndWaitAsync(command);
 
-                    if (response is GetAllRoomResponse roomResponse)
+                    if (response is GetAllPlayerResponse playerResponse)
                     {
                         results.Add(new
                         {
+                            serverName,
                             success = true,
-                            rooms = roomResponse.RoomIdList,
-                            roomCount = roomResponse.RoomIdList.Length,
+                            players = playerResponse.PlayerList
                         });
                     }
                     else
@@ -66,7 +66,7 @@ public class RoomController : ControllerBase
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to get rooms from server '{ServerName}'", serverName);
+                    _logger.LogError(ex, "Failed to get players from server '{ServerName}'", serverName);
                     results.Add(new
                     {
                         success = false,
@@ -83,16 +83,16 @@ public class RoomController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get all rooms");
+            _logger.LogError(ex, "Failed to get all players");
             return StatusCode(500, new { error = ex.Message });
         }
     }
 
     /// <summary>
-    /// 获取指定服务器的房间信息
+    /// 获取指定服务器的玩家列表
     /// </summary>
     [HttpGet("{serverName}")]
-    public async Task<IActionResult> GetRoomsByServer(string serverName)
+    public async Task<IActionResult> GetPlayersByServer(string serverName)
     {
         try
         {
@@ -107,16 +107,15 @@ public class RoomController : ControllerBase
                 return StatusCode(503, new { error = $"Server '{serverName}' is not connected" });
             }
 
-            var command = new GetAllRoomCommand();
+            var command = new GetAllPlayerCommand();
             var response = await client.SendCommandAndWaitAsync(command);
 
-            if (response is GetAllRoomResponse roomResponse)
+            if (response is GetAllPlayerResponse playerResponse)
             {
                 return Ok(new
                 {
                     success = true,
-                    rooms = roomResponse.RoomIdList,
-                    roomCount = roomResponse.RoomIdList.Length
+                    players = playerResponse.PlayerList
                 });
             }
 
@@ -128,59 +127,9 @@ public class RoomController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get rooms from server '{ServerName}'", serverName);
-            return StatusCode(500, new { error = ex.Message });
-        }
-    }
-
-    /// <summary>
-    /// 获取指定服务器的指定房间详细信息
-    /// </summary>
-    [HttpGet("{serverName}/{roomId}")]
-    public async Task<IActionResult> GetRoomDetails(string serverName, string roomId)
-    {
-        try
-        {
-            var client = _clientService.GetClient(serverName);
-            if (client == null)
-            {
-                return NotFound(new { error = $"Server '{serverName}' not found" });
-            }
-
-            if (!client.IsConnected)
-            {
-                return StatusCode(503, new { error = $"Server '{serverName}' is not connected" });
-            }
-
-            var command = new GetRoomCommand { RoomId = roomId };
-            var response = await client.SendCommandAndWaitAsync(command);
-
-            if (response is GetRoomResponse roomResponse)
-            {
-                if (roomResponse.RoomInfo == null)
-                {
-                    return NotFound(new { error = $"Room '{roomId}' not found on server '{serverName}'" });
-                }
-
-                return Ok(new
-                {
-                    success = true,
-                    room = roomResponse.RoomInfo
-                });
-            }
-
-            return Ok(new
-            {
-                success = false,
-                message = "Unexpected response type"
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get room '{RoomId}' from server '{ServerName}'", roomId, serverName);
+            _logger.LogError(ex, "Failed to get players from server '{ServerName}'", serverName);
             return StatusCode(500, new { error = ex.Message });
         }
     }
 }
-
 

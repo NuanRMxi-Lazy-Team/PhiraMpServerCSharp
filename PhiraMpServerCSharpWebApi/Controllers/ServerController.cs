@@ -61,6 +61,54 @@ public class ServerController : ControllerBase
     }
 
     /// <summary>
+    /// 获取指定服务器的详细状态信息
+    /// </summary>
+    [HttpGet("{serverName}/details")]
+    public async Task<IActionResult> GetServerStatusDetails(string serverName)
+    {
+        try
+        {
+            var client = _clientService.GetClient(serverName);
+            if (client == null)
+            {
+                return NotFound(new { error = $"Server '{serverName}' not found" });
+            }
+
+            if (!client.IsConnected)
+            {
+                return StatusCode(503, new { error = $"Server '{serverName}' is not connected" });
+            }
+
+            var command = new GetServerStatusCommand();
+            var response = await client.SendCommandAndWaitAsync(command);
+
+            if (response is GetServerStatusResponse statusResponse)
+            {
+                return Ok(new
+                {
+                    success = true,
+                    uptime = statusResponse.Uptime.TotalSeconds,
+                    maxPlayers = statusResponse.MaxPlayers,
+                    currentPlayers = statusResponse.CurrentPlayers,
+                    externalAddress = statusResponse.ExternalAddress,
+                    isConnected = client.IsConnected
+                });
+            }
+
+            return Ok(new
+            {
+                success = false,
+                message = "Unexpected response type"
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get server status for '{ServerName}'", serverName);
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// 设置指定服务器的全局房间最大玩家数
     /// </summary>
     [HttpPut("{serverName}/maxplayers")]
@@ -95,7 +143,6 @@ public class ServerController : ControllerBase
             {
                 return Ok(new
                 {
-                    serverName,
                     success = setMaxPlayersResponse.IsSuccess,
                     maxPlayers = request.MaxPlayers,
                     message = $"服务器 '{serverName}' 的全局房间最大玩家数已设置",
