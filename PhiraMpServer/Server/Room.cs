@@ -102,6 +102,10 @@ public class Room
                     user.TrySendAsync(new ChangeHostCommand(cycle)).Wait();
                 }
             }
+            // 给所有玩家发送ChatMessage
+            var content = cycle ? "此房间或服务器启用了投票，当前模式实际为投票模式。" : "投票模式已禁用，当前为普通模式。";
+            BroadcastAsync(new MessageCommand(new ChatMessage(-1, content))).Wait();
+            return;
         }
         Cycle = cycle;
     }
@@ -283,6 +287,29 @@ public class Room
         {
             user.GameTime = float.NegativeInfinity;
         }
+    }
+    
+    public Dictionary<int, bool> GetUserReadyStates()
+    {
+        var result = new Dictionary<int, bool>();
+        var users = GetUsers();
+        
+        if (State is InternalRoomState.WaitForReady waitState)
+        {
+            foreach (var user in users)
+            {
+                result[user.Id] = waitState.Started.Contains(user.Id);
+            }
+        }
+        else
+        {
+            foreach (var user in users)
+            {
+                result[user.Id] = false;
+            }
+        }
+        
+        return result;
     }
 
     public async Task CheckAllReadyAsync()

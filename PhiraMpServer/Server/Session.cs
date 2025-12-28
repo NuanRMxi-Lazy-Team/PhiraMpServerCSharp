@@ -536,8 +536,8 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             if (room.State is not InternalRoomState.SelectChart)
                 throw new Exception("Invalid state");
-            if (room.GetAllUsers().Count < 2)
-                throw new Exception("If no one is looking for you to play, you can go out and relax.");
+            //if (room.GetAllUsers().Count < 2)
+            //    throw new Exception("If no one is looking for you to play, you can go out and relax.");
 
             room.CheckHost(User);
 

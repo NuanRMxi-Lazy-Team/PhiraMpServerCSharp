@@ -10,7 +10,6 @@ using System.Threading.Tasks;
 using PhiraMpServer.Common;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
-using PhiraMpServer.ExternalInterface.Common;
 
 namespace PhiraMpServer.Server;
 
@@ -18,8 +17,11 @@ public class ServerConfig
 {
     public string BindIp { get; set; } = "::";
     public int Port { get; set; } = 12346;
+    public bool EnableExternalInterface { get; set; } = true;
+    public string ExternalInterfaceToken { get; set; } = Guid.NewGuid().ToString("N")[..16];
     public string ExternalInterfaceIp { get; set; } = "127.0.0.1";
     public int ExternalInterfacePort { get; set; } = 17181;
+    public int ServerMaxPlayers { get; set; } = 256;
     public int RoomMaxPlayers { get; set; } = 8;
     public List<int> Monitors { get; set; } = new() { 2 };
     public bool CycleVotingMode { get; set; } = false;
@@ -37,7 +39,7 @@ public class ServerConfig
                     .Build();
                 var yamlNew = serializer.Serialize(defaultConfig);
                 File.WriteAllText(path, yamlNew);
-                return new ServerConfig();
+                return defaultConfig;
             }
 
 
@@ -81,14 +83,13 @@ public class PhiraMpServer : IDisposable
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _cts;
     private readonly Task _lostConnectionTask;
+    private readonly ExternalInterface.Server? _externalInterfaceServer;
     private bool _disposed;
 
-    public PhiraMpServer(ServerConfig? config = null, ExternalInterface.Server? externalInterfaceServer = null)
+    public PhiraMpServer(ServerConfig config, ServerState serverState, ExternalInterface.Server? externalInterfaceServer = null)
     {
         _cts = new CancellationTokenSource();
-
-        config ??= ServerConfig.Load();
-        _state = new ServerState(config);
+        _state = serverState;
 
         var bindAddress = IPAddress.Parse(config.BindIp);
         _listener = new TcpListener(bindAddress, config.Port);
@@ -101,31 +102,7 @@ public class PhiraMpServer : IDisposable
 
         _lostConnectionTask = Task.Run(ProcessLostConnections);
 
-        externalInterfaceServer?.OnCommandReceived += async command => await ExternalInterfaceHandler.CommandHandler(_state, command);
-        
-        /*async command =>
-        {
-            // Handle external interface commands here
-            switch (command)
-            {
-                case GetAllRoomCommand:
-                    var response = new GetAllRoomResponse()
-                    {
-                        RoomIdList = new List<string>(_state.Rooms.Keys)
-                    };
-                    return response;
-                case SetRoomMaxPlayersCommand maxPlayersCommand:
-                {
-                    _state.Config.RoomMaxPlayers = maxPlayersCommand.MaxPlayers;
-                    return new SetRoomMaxPlayersResponse { IsSuccess = true };
-                }
-                default:
-                    return new UnknowCommandResponse
-                    {
-                        Message = $"The command type {command.Type} is not recognized."
-                    };
-            }
-        };*/
+        _externalInterfaceServer = externalInterfaceServer;
     }
 
     public async Task StartAsync()
@@ -158,6 +135,15 @@ public class PhiraMpServer : IDisposable
 
         try
         {
+            if (_state.Sessions.Count >= _state.Config.ServerMaxPlayers)
+            {
+                Logger.Warning($"Server is full, rejecting connection from {endpoint}");
+                var tempSession = await Session.CreateAsync(sessionId, client, _state);
+                await tempSession.Stream.SendAsync(new AuthenticateResponseCommand("Server is full"));
+                await Task.Delay(10);
+                tempSession.Dispose();
+                return;
+            }
             var session = await Session.CreateAsync(sessionId, client, _state);
 
             Logger.Info($"Received connection from {endpoint} ({sessionId}), version: {session.Stream.Version}");

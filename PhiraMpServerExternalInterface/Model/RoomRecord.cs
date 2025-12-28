@@ -1,5 +1,5 @@
 ﻿using ProtoBuf;
-namespace PhiraMpServer.ExternalInterface.Module;
+namespace PhiraMpServer.ExternalInterface.Model;
 
 [ProtoContract]
 public record RoomRecord
@@ -16,6 +16,10 @@ public record RoomRecord
     public RoomState State { get; init; }
     [ProtoMember(6)]
     public RoomType Type { get; init; }
+    [ProtoMember(7)]
+    public int[] SelectedCharts { get; init; } = [];
+    [ProtoMember(8)]
+    public Dictionary<int,bool> ReadyInfo {get; init; } = new();
 }
 
 [ProtoContract]

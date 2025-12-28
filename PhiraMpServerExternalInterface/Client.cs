@@ -9,11 +9,13 @@ public class Client : IDisposable
 {
     private readonly string _ip;
     private readonly int _port;
+    private readonly string? _tokenSha256;
     private TcpClient? _client;
     private NetworkStream? _stream;
     private readonly CancellationTokenSource _cts = new();
     private bool _disposed;
     private bool _isConnected;
+    private bool _isAuthenticated;
     private readonly ConcurrentDictionary<string, TaskCompletionSource<CommandResponse>> _pendingResponses = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
 
@@ -21,12 +23,15 @@ public class Client : IDisposable
     public Action<string> OnError = s => { };
     public Action<string> OnWarning = s => { };
     public Action<CommandResponse> OnResponseReceived = _ => { };
+    public Action<ServerMessages> OnServerMessageReceived = _ => { };
     public bool IsConnected => _isConnected && _client?.Connected == true;
+    public bool IsAuthenticated => _isAuthenticated;
 
-    public Client(string ip, int port)
+    public Client(string ip, int port, string? tokenSha256 = null)
     {
         _ip = ip;
         _port = port;
+        _tokenSha256 = tokenSha256;
     }
 
     public async Task ConnectAsync()
@@ -39,11 +44,64 @@ public class Client : IDisposable
             _isConnected = true;
             OnInfo.Invoke($"Connected to {_ip}:{_port}");
             _ = Task.Run(ReceiveLoopAsync, _cts.Token);
+
+            // 如果提供了 Token，自动进行认证
+            if (!string.IsNullOrEmpty(_tokenSha256))
+            {
+                await AuthenticateAsync(_tokenSha256);
+            }
+            else
+            {
+                OnWarning.Invoke("No token provided, authentication skipped");
+                _isAuthenticated = true; // 如果没有 token，假定不需要认证
+            }
         }
         catch (Exception ex)
         {
             _isConnected = false;
             OnError.Invoke($"Connect failed: {ex.Message}");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 进行认证
+    /// </summary>
+    private async Task AuthenticateAsync(string tokenSha256)
+    {
+        try
+        {
+            OnInfo.Invoke("Authenticating...");
+            var authCommand = new AuthenticateCommand
+            {
+                TokenSha256 = tokenSha256
+            };
+
+            var response = await SendCommandAndWaitAsync(authCommand, timeoutMs: 5000);
+
+            if (response is AuthenticateResponse authResponse)
+            {
+                _isAuthenticated = authResponse.IsSuccess;
+                if (authResponse.IsSuccess)
+                {
+                    OnInfo.Invoke("Authentication successful");
+                }
+                else
+                {
+                    OnError.Invoke($"Authentication failed: {authResponse.Message}");
+                    throw new InvalidOperationException($"Authentication failed: {authResponse.Message}");
+                }
+            }
+            else
+            {
+                OnError.Invoke("Unexpected authentication response");
+                throw new InvalidOperationException("Unexpected authentication response");
+            }
+        }
+        catch (Exception ex)
+        {
+            _isAuthenticated = false;
+            OnError.Invoke($"Authentication error: {ex.Message}");
             throw;
         }
     }
@@ -82,7 +140,7 @@ public class Client : IDisposable
             await SendCommandAsync(command);
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(_cts.Token);
             linked.CancelAfter(timeoutMs);
-            using (linked.Token.Register(() => tcs.TrySetCanceled()))
+            await using (linked.Token.Register(() => tcs.TrySetCanceled()))
             {
                 return await tcs.Task;
             }
@@ -108,14 +166,28 @@ public class Client : IDisposable
             {
                 var lenBuf = new byte[4];
                 var read = await ReadExactlyAsync(_stream!, lenBuf, 4, _cts.Token);
-                if (read == 0) { OnInfo.Invoke("Server disconnected"); _isConnected = false; break; }
+                if (read == 0)
+                {
+                    OnInfo.Invoke("Server disconnected");
+                    _isConnected = false;
+                    break;
+                }
 
                 var msgLen = BitConverter.ToInt32(lenBuf, 0);
-                if (msgLen is <= 0 or > 1048576) { OnWarning.Invoke($"Invalid length: {msgLen}"); break; }
+                if (msgLen is <= 0 or > 1048576)
+                {
+                    OnWarning.Invoke($"Invalid length: {msgLen}");
+                    break;
+                }
 
                 var buf = new byte[msgLen];
                 read = await ReadExactlyAsync(_stream!, buf, msgLen, _cts.Token);
-                if (read == 0) { OnWarning.Invoke("Closed while reading"); _isConnected = false; break; }
+                if (read == 0)
+                {
+                    OnWarning.Invoke("Closed while reading");
+                    _isConnected = false;
+                    break;
+                }
 
                 await ProcessResponseAsync(buf);
             }
@@ -141,6 +213,7 @@ public class Client : IDisposable
             if (r == 0) return 0;
             total += r;
         }
+
         return total;
     }
 
@@ -149,20 +222,46 @@ public class Client : IDisposable
         try
         {
             using var ms = new MemoryStream(data);
-            var resp = Serializer.Deserialize<CommandResponse>(ms);
-            if (resp == null) { OnWarning.Invoke("Deserialize response failed"); return; }
-            OnInfo.Invoke($"Received response for {resp.GetType()} (token: {resp.Token})");
-            OnResponseReceived.Invoke(resp);
 
-            if (!string.IsNullOrWhiteSpace(resp.Token) && _pendingResponses.TryRemove(resp.Token, out var tcs))
-                tcs.TrySetResult(resp);
+            // 尝试反序列化为 CommandResponse
+            try
+            {
+                var resp = Serializer.Deserialize<CommandResponse>(ms);
+                if (resp != null)
+                {
+                    OnInfo.Invoke($"Received response for {resp.GetType()} (token: {resp.Token})");
+                    OnResponseReceived.Invoke(resp);
+
+                    if (!string.IsNullOrWhiteSpace(resp.Token) && _pendingResponses.TryRemove(resp.Token, out var tcs))
+                        tcs.TrySetResult(resp);
+                    else
+                        OnWarning.Invoke($"No pending request for token {resp.Token}");
+                    return;
+                }
+            }
+            catch
+            {
+                // 如果不是 CommandResponse，尝试反序列化为 ServerMessages
+                ms.Position = 0;
+            }
+
+            // 尝试反序列化为 ServerMessages
+            var serverMsg = Serializer.Deserialize<ServerMessages>(ms);
+            if (serverMsg != null)
+            {
+                OnInfo.Invoke($"Received server message: {serverMsg.GetType()}");
+                OnServerMessageReceived.Invoke(serverMsg);
+            }
             else
-                OnWarning.Invoke($"No pending request for token {resp.Token}");
+            {
+                OnWarning.Invoke("Deserialize failed for both CommandResponse and ServerMessages");
+            }
         }
         catch (Exception ex)
         {
             OnError.Invoke($"Deserialize error: {ex.Message}");
         }
+
         await Task.CompletedTask;
     }
 
@@ -186,5 +285,6 @@ public class Client : IDisposable
         _client?.Dispose();
         _cts.Dispose();
         _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }

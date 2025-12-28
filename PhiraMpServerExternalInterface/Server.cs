@@ -1,6 +1,7 @@
 ﻿using System.Net.Sockets;
 using ProtoBuf;
 using PhiraMpServer.ExternalInterface.Common;
+using System.Collections.Concurrent;
 
 namespace PhiraMpServer.ExternalInterface;
 
@@ -11,16 +12,19 @@ public class Server : IDisposable
     private readonly CancellationTokenSource _cts;
     private TcpListener _listener;
     private List<TcpClient> _clients = [];
+    private readonly ConcurrentDictionary<TcpClient, bool> _authenticatedClients = new();
     private bool _disposed;
     public Action<string> OnInfo = s => { };
     public Action<string> OnError = s => { };
     public Action<string> OnWarning = s => { };
-    public Func<Command, Task<CommandResponse>> OnCommandReceived = cmd => Task.FromResult<CommandResponse>(default);
-    public Server(string ip, int port)
+    private readonly ICommandDispatcher _commandDispatcher;
+    
+    public Server(string ip, int port, ICommandDispatcher? commandDispatcher = null)
     {
         _cts = new CancellationTokenSource();
         _ip = ip;
         _port = port;
+        _commandDispatcher = commandDispatcher ?? new CommandDispatcher();
         var bindAddress = System.Net.IPAddress.Parse(_ip);
         _listener = new TcpListener(bindAddress, _port);
         if (bindAddress.AddressFamily == AddressFamily.InterNetworkV6)
@@ -31,8 +35,8 @@ public class Server : IDisposable
     {
         _listener.Start();
         OnInfo.Invoke($"External Interface Server Listening on {_ip}:{_port}");
-        
         _ = Task.Run(async () => await AcceptClientsAsync(), _cts.Token);
+        await Task.CompletedTask;
     }
 
     private async Task AcceptClientsAsync()
@@ -81,7 +85,7 @@ public class Server : IDisposable
 
                 var messageLength = BitConverter.ToInt32(lengthBuffer, 0);
                 
-                if (messageLength <= 0 || messageLength > 1048576) // 1MB 限制
+                if (messageLength is <= 0 or > 1048576) // 1MB 限制
                 {
                     OnWarning.Invoke($"Invalid message length: {messageLength}");
                     break;
@@ -137,17 +141,31 @@ public class Server : IDisposable
             if (command != null)
             {
                 OnInfo.Invoke($"Received command: {command.GetType()} from {client.Client.RemoteEndPoint}");
-                var result = await OnCommandReceived.Invoke(command);
-                if (result != null)
+
+                // 未鉴权时只允许 AuthenticateCommand
+                if (command is not AuthenticateCommand &&
+                    (!_authenticatedClients.TryGetValue(client, out var authed) || !authed))
                 {
-                    // 让响应携带请求的 Token
-                    result.Token ??= command.Token;
-                    await SendToClientAsync(client, result as CommandResponse);
+                    OnWarning.Invoke($"Unauthorized command from {client.Client.RemoteEndPoint}");
+                    await SendToClientAsync(client, new AuthenticateResponse
+                    {
+                        Token = command.Token,
+                        IsSuccess = false,
+                        Message = "Unauthorized. Please authenticate first."
+                    });
+                    return;
                 }
-                else
+
+                var result = await _commandDispatcher.DispatchAsync(command);
+                
+                // 鉴权命令结果：更新状态
+                if (result is AuthenticateResponse authResp)
                 {
-                    OnWarning.Invoke("OnCommandReceived returned null response");
+                    _authenticatedClients.AddOrUpdate(client, authResp.IsSuccess, (_, _) => authResp.IsSuccess);
                 }
+
+                result.Token ??= command.Token;
+                await SendToClientAsync(client, result);
             }
             else
             {
@@ -166,6 +184,7 @@ public class Server : IDisposable
         {
             _clients.Remove(client);
         }
+        _authenticatedClients.TryRemove(client, out _); // 清理鉴权状态
     }
 
     public async Task SendToClientAsync(TcpClient client, CommandResponse commandResponse)
@@ -186,6 +205,44 @@ public class Server : IDisposable
         catch (Exception ex)
         {
             OnError.Invoke($"Error sending to client: {ex.Message}");
+        }
+    }
+    
+    public async Task SendToClientAsync(TcpClient client, ServerMessages serverMessages)
+    {
+        try
+        {
+            if (client.Connected)
+            {
+                using var ms = new MemoryStream();
+                Serializer.Serialize(ms, serverMessages);
+                var data = ms.ToArray();
+                var lengthPrefix = BitConverter.GetBytes(data.Length);
+                
+                await client.GetStream().WriteAsync(lengthPrefix, _cts.Token);
+                await client.GetStream().WriteAsync(data, _cts.Token);
+            }
+        }
+        catch (Exception ex)
+        {
+            OnError.Invoke($"Error sending to client: {ex.Message}");
+        }
+    }
+
+    public async Task BroadcastAsync(ServerMessages serverMessages)
+    {
+        // 只广播给已鉴权客户端
+        List<TcpClient> clientsCopy;
+        lock (_clients)
+        {
+            clientsCopy = new List<TcpClient>(_clients);
+        }
+        foreach (var client in clientsCopy)
+        {
+            if (_authenticatedClients.TryGetValue(client, out var authed) && authed)
+            {
+                await SendToClientAsync(client, serverMessages);
+            }
         }
     }
 
