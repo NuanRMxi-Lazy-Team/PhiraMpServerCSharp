@@ -232,10 +232,9 @@ public class Session : IDisposable
         try
         {
             var token = cmd.Token.Value;
-            if (token.Length != 32)
-            {
+            if (token.Length > 32)
                 return new AuthenticateResponseCommand("Invalid token");
-            }
+            
 
             Logger.Debug($"Session {Id}: authenticate {token}");
 
