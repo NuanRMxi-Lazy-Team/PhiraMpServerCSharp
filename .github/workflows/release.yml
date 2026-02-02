@@ -83,6 +83,7 @@ jobs:
           zip -r ../PhiraMpServer-win-arm64-fd.zip *
       
       # Windows ARM64 - Self Contained
+      - name: Build Windows ARM64 (Self Contained)
         run: |
           dotnet publish PhiraMpServer/PhiraMpServer.csproj -c Release -r win-arm64 --self-contained true -o ./publish/win-arm64-sc
           cd ./publish/win-arm64-sc
