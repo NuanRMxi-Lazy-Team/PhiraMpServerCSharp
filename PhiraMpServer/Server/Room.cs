@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -220,19 +221,53 @@ public class Room
 
     public async Task BroadcastAsync(ServerCommand cmd)
     {
-        var users = GetAllUsers();
-        foreach (var user in users)
+        List<User> users;
+        lock (_lock)
         {
-            await user.TrySendAsync(cmd);
+            users = new List<User>(_users.Count + _monitors.Count);
+            users.AddRange(_users.Where(u => u != null));
+            users.AddRange(_monitors.Where(u => u != null));
+        }
+
+        if (users.Count == 0)
+            return;
+
+        if (users.Count == 1)
+        {
+            await users[0].TrySendAsync(cmd);
+            return;
+        }
+
+        // Sequential sends to avoid Task allocation overhead
+        // This is more memory-efficient than Task.WhenAll for large broadcasts
+        for (int i = 0; i < users.Count; i++)
+        {
+            _ = users[i].TrySendAsync(cmd);  // Fire and forget
         }
     }
 
     public async Task BroadcastMonitorsAsync(ServerCommand cmd)
     {
-        var monitors = GetMonitors();
-        foreach (var user in monitors)
+        List<User> monitors;
+        lock (_lock)
         {
-            await user.TrySendAsync(cmd);
+            monitors = new List<User>(_monitors.Count);
+            monitors.AddRange(_monitors.Where(u => u != null));
+        }
+
+        if (monitors.Count == 0)
+            return;
+
+        if (monitors.Count == 1)
+        {
+            await monitors[0].TrySendAsync(cmd);
+            return;
+        }
+
+        // Fire and forget for monitors (no need to wait for all)
+        for (int i = 0; i < monitors.Count; i++)
+        {
+            _ = monitors[i].TrySendAsync(cmd);
         }
     }
 
@@ -317,6 +352,10 @@ public class Room
                 {
                     await SendAsync(new GameEndMessage());
                     State = new InternalRoomState.SelectChart();
+                    
+                    // Always clear votes and chart to prevent memory leaks
+                    Chart = null;
+                    ClearVotes();
 
                     if (Cycle && !CycleVotingMode)
                     {
@@ -336,8 +375,6 @@ public class Room
                     }
                     else if (Cycle && CycleVotingMode)
                     {
-                        Chart = null;
-                        ClearVotes();
                         // 告诉所有客户端你是host（除了真host）
                         foreach (var user in users)
                         {

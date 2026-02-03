@@ -109,7 +109,8 @@ public class PhiraMpServer : IDisposable
             try
             {
                 var client = await _listener.AcceptTcpClientAsync(_cts.Token);
-                _ = Task.Run(() => HandleClientAsync(client), _cts.Token);
+                // Fire and forget - handle client asynchronously without awaiting
+                _ = HandleClientAsync(client);
             }
             catch (OperationCanceledException)
             {

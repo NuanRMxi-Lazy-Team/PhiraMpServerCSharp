@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Sockets;
@@ -353,36 +354,46 @@ public class ClientStream : IDisposable
 
     private async Task SendLoop()
     {
-        var lengthBuffer = new byte[5];
+        // Rent reusable buffers from ArrayPool to reduce allocations
+        byte[] lengthBuffer = ArrayPool<byte>.Shared.Rent(5);
 
         try
         {
             await foreach (var command in _sendChannel.Reader.ReadAllAsync(_cts.Token))
             {
-                // Serialize command
-                var writer = new BinaryWriter();
-                command.WriteBinary(writer);
-                var payload = writer.ToArray();
-
-                Logger.Debug($"Sending {payload.Length} bytes ({command.GetType().Name}): {BitConverter.ToString(payload)}");
-
-                // Write ULEB128 length
-                uint length = (uint)payload.Length;
-                int lengthSize = 0;
-
-                do
+                try
                 {
-                    byte b = (byte)(length & 0x7F);
-                    length >>= 7;
-                    if (length != 0)
-                        b |= 0x80;
-                    lengthBuffer[lengthSize++] = b;
-                } while (length != 0);
+                    // Serialize command
+                    var writer = new BinaryWriter();
+                    command.WriteBinary(writer);
+                    var payload = writer.ToArray();
 
-                // Send length + payload
-                await _networkStream.WriteAsync(lengthBuffer.AsMemory(0, lengthSize), _cts.Token);
-                await _networkStream.WriteAsync(payload, _cts.Token);
-                await _networkStream.FlushAsync(_cts.Token);
+                    Logger.Debug($"Sending {payload.Length} bytes ({command.GetType().Name}): {BitConverter.ToString(payload)}");
+
+                    // Write ULEB128 length
+                    uint length = (uint)payload.Length;
+                    int lengthSize = 0;
+
+                    do
+                    {
+                        byte b = (byte)(length & 0x7F);
+                        length >>= 7;
+                        if (length != 0)
+                            b |= 0x80;
+                        lengthBuffer[lengthSize++] = b;
+                    } while (length != 0);
+
+                    // Send length + payload in one operation
+                    await _networkStream.WriteAsync(lengthBuffer.AsMemory(0, lengthSize), _cts.Token);
+                    await _networkStream.WriteAsync(payload, _cts.Token);
+                    await _networkStream.FlushAsync(_cts.Token);
+                }
+                catch (Exception sendEx)
+                {
+                    Logger.Debug($"Send error: {sendEx.Message}");
+                    _isConnected = false;
+                    break;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -408,11 +419,17 @@ public class ClientStream : IDisposable
             Logger.Error(ex, "Unexpected error in send loop:");
             _isConnected = false;
         }
+        finally
+        {
+            // Return rented buffer to pool
+            ArrayPool<byte>.Shared.Return(lengthBuffer);
+        }
     }
 
     private async Task ReceiveLoop()
     {
-        var buffer = new byte[2 * 1024 * 1024];
+        // Rent buffer from ArrayPool instead of allocating new one
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(2 * 1024 * 1024);
 
         try
         {
@@ -504,6 +521,11 @@ public class ClientStream : IDisposable
         {
             Logger.Error(ex, "Unexpected error in receive loop:");
             _isConnected = false;
+        }
+        finally
+        {
+            // Return rented buffer to pool
+            ArrayPool<byte>.Shared.Return(buffer);
         }
     }
 

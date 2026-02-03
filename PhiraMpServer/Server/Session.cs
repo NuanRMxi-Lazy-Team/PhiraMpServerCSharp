@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -106,6 +107,8 @@ public class User
         }
 
         var dangleMark = new object();
+        var userId = Id;
+        var server = Server;
         DangleMark = dangleMark;
 
         _ = Task.Run(async () =>
@@ -117,10 +120,10 @@ public class User
                 var currentRoom = Room;
                 if (currentRoom != null)
                 {
-                    Server.Users.TryRemove(Id, out _);
+                    server.Users.TryRemove(userId, out _);
                     if (await currentRoom.OnUserLeaveAsync(this))
                     {
-                        Server.Rooms.TryRemove(currentRoom.Id.Value, out _);
+                        server.Rooms.TryRemove(currentRoom.Id.Value, out _);
                     }
                 }
             }
@@ -131,6 +134,16 @@ public class User
 public class Session : IDisposable
 {
     private const string PhiraHost = "https://phira.5wyxi.com";
+    
+    // Shared HttpClient instance to avoid port exhaustion
+    private static readonly HttpClient SharedHttpClient = CreateSharedHttpClient();
+    
+    // Authentication token cache with shorter TTL (1 minute) for memory efficiency
+    private static readonly ConcurrentDictionary<string, (PhiraUserInfo info, long expireTicks)> AuthTokenCache = new();
+    private const long AuthCacheTtlTicks = 1L * 60L * 10_000_000L; // 1 minute in ticks (shorter to avoid memory bloat)
+    
+    // HTTP request timeout (seconds)
+    private const int HttpTimeoutSeconds = 10;
 
     public Guid Id { get; }
     public ClientStream Stream { get; private set; } = null!;
@@ -166,16 +179,76 @@ public class Session : IDisposable
         return session;
     }
 
+    private static HttpClient CreateSharedHttpClient()
+    {
+        var handler = new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(1),
+            MaxConnectionsPerServer = 100,
+            EnableMultipleHttp2Connections = true
+        };
+
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromSeconds(HttpTimeoutSeconds)
+        };
+
+        // Start cleanup task for expired tokens
+        _ = Task.Run(CleanupExpiredTokens);
+
+        return client;
+    }
+
+    private static async Task CleanupExpiredTokens()
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10)); // Clean up every 10 seconds (more aggressive)
+
+                var now = DateTime.UtcNow.Ticks;
+                var expiredTokens = new List<string>();
+                
+                // Collect expired tokens
+                foreach (var kvp in AuthTokenCache)
+                {
+                    if (kvp.Value.expireTicks < now)
+                    {
+                        expiredTokens.Add(kvp.Key);
+                    }
+                }
+
+                // Remove them
+                foreach (var token in expiredTokens)
+                {
+                    AuthTokenCache.TryRemove(token, out _);
+                }
+
+                if (expiredTokens.Count > 0)
+                {
+                    Logger.Debug($"Cleaned up {expiredTokens.Count} expired auth tokens, cache size: {AuthTokenCache.Count}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error in token cleanup task:");
+        }
+    }
+
     private async Task MonitorHeartbeat()
     {
         try
         {
             while (!_cts.Token.IsCancellationRequested)
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), _cts.Token);
+                // Check every 5 seconds instead of 1 second to reduce CPU usage
+                await Task.Delay(TimeSpan.FromSeconds(5), _cts.Token);
 
                 var lastRecv = Stream.LastReceive;
-                if (DateTime.UtcNow - lastRecv > TimeSpan.FromSeconds(10))
+                if (DateTime.UtcNow - lastRecv > TimeSpan.FromSeconds(30))
                 {
                     Logger.Warning($"Session {Id} heartbeat timeout");
                     await Server.LostConnectionAsync(Id);
@@ -234,49 +307,78 @@ public class Session : IDisposable
             var token = cmd.Token.Value;
             if (token.Length > 32)
                 return new AuthenticateResponseCommand("Invalid token");
-            
 
             Logger.Debug($"Session {Id}: authenticate {token}");
 
-            using var httpClient = new HttpClient();
-            httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+            // Check cache first
+            if (AuthTokenCache.TryGetValue(token, out var cached))
+            {
+                if (DateTime.UtcNow.Ticks < cached.expireTicks)
+                {
+                    // Cache hit - use cached result
+                    var userInfo = cached.info;
+                    return ProcessAuthenticatedUser(userInfo);
+                }
+                else
+                {
+                    // Cache expired - remove it
+                    AuthTokenCache.TryRemove(token, out _);
+                }
+            }
 
-            var response = await httpClient.GetAsync($"{PhiraHost}/me");
+            // Cache miss - fetch from server
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{PhiraHost}/me");
+            request.Headers.Add("Authorization", $"Bearer {token}");
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(HttpTimeoutSeconds));
+            var response = await SharedHttpClient.SendAsync(request, cts.Token);
             response.EnsureSuccessStatusCode();
 
-            var userInfo = await response.Content.ReadFromJsonAsync<PhiraUserInfo>();
-            if (userInfo == null)
+            var userInfo2 = await response.Content.ReadFromJsonAsync<PhiraUserInfo>(cancellationToken: cts.Token);
+            if (userInfo2 == null)
             {
                 return new AuthenticateResponseCommand("Failed to fetch user info");
             }
 
-            Logger.Debug($"Session {Id} <- User: {userInfo.Id}, Name: {userInfo.Name}");
+            // Cache the result
+            AuthTokenCache[token] = (userInfo2, DateTime.UtcNow.Ticks + AuthCacheTtlTicks);
 
-            User? user;
-            if (Server.Users.TryGetValue(userInfo.Id, out user))
-            {
-                Logger.Info($"User {userInfo.Id} reconnect");
-                User = user;
-                user.SetSession(this);
-            }
-            else
-            {
-                user = new User(userInfo.Id, userInfo.Name, userInfo.Language, Server);
-                User = user;
-                user.SetSession(this);
-                Server.Users[userInfo.Id] = user;
-            }
-
-            _authenticated = true;
-
-            var roomState = user.Room?.ClientState(user);
-            return new AuthenticateResponseCommand(user.ToInfo(), roomState);
+            Logger.Debug($"Session {Id} <- User: {userInfo2.Id}, Name: {userInfo2.Name}");
+            return ProcessAuthenticatedUser(userInfo2);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Warning($"Authentication timeout for session {Id}");
+            return new AuthenticateResponseCommand("Authentication timeout");
         }
         catch (Exception ex)
         {
             Logger.Warning($"Failed to authenticate: {ex.Message}");
             return new AuthenticateResponseCommand(ex.Message);
         }
+    }
+
+    private ServerCommand ProcessAuthenticatedUser(PhiraUserInfo userInfo)
+    {
+        User? user;
+        if (Server.Users.TryGetValue(userInfo.Id, out user))
+        {
+            Logger.Info($"User {userInfo.Id} reconnect");
+            User = user;
+            user.SetSession(this);
+        }
+        else
+        {
+            user = new User(userInfo.Id, userInfo.Name, userInfo.Language, Server);
+            User = user;
+            user.SetSession(this);
+            Server.Users[userInfo.Id] = user;
+        }
+
+        _authenticated = true;
+
+        var roomState = user.Room?.ClientState(user);
+        return new AuthenticateResponseCommand(user.ToInfo(), roomState);
     }
 
     private async Task<ServerCommand?> ProcessCommandAsync(ClientCommand cmd)
@@ -492,11 +594,12 @@ public class Session : IDisposable
 
             Logger.Debug($"User {User.Id} in room {room.Id} selecting chart {cmd.Id}");
 
-            using var httpClient = new HttpClient();
-            var response = await httpClient.GetAsync($"{PhiraHost}/chart/{cmd.Id}");
+            // 使用共享 HttpClient，避免端口耗尽
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(HttpTimeoutSeconds));
+            var response = await SharedHttpClient.GetAsync($"{PhiraHost}/chart/{cmd.Id}", cts.Token);
             response.EnsureSuccessStatusCode();
 
-            var chart = await response.Content.ReadFromJsonAsync<ChartInfo>();
+            var chart = await response.Content.ReadFromJsonAsync<ChartInfo>(cancellationToken: cts.Token);
             if (chart == null)
                 throw new Exception("Failed to fetch chart");
 
@@ -521,6 +624,11 @@ public class Session : IDisposable
             }
 
             return new SelectChartResponseCommand(true);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Warning($"Chart fetch timeout for user {User.Id}");
+            return new SelectChartResponseCommand(false, "Chart fetch timeout");
         }
         catch (Exception ex)
         {
@@ -661,11 +769,12 @@ public class Session : IDisposable
         {
             var room = User.Room ?? throw new Exception("No room");
 
-            using var httpClient = new HttpClient();
-            var response = await httpClient.GetAsync($"{PhiraHost}/record/{cmd.Id}");
+            // 使用共享 HttpClient，避免端口耗尽
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(HttpTimeoutSeconds));
+            var response = await SharedHttpClient.GetAsync($"{PhiraHost}/record/{cmd.Id}", cts.Token);
             response.EnsureSuccessStatusCode();
 
-            var record = await response.Content.ReadFromJsonAsync<RecordInfo>();
+            var record = await response.Content.ReadFromJsonAsync<RecordInfo>(cancellationToken: cts.Token);
             if (record == null || record.Player != User.Id)
                 throw new Exception("Invalid record");
 
@@ -687,6 +796,11 @@ public class Session : IDisposable
             }
 
             return new PlayedResponseCommand(true);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Warning($"Record fetch timeout for user {User.Id}");
+            return new PlayedResponseCommand(false, "Record fetch timeout");
         }
         catch (Exception ex)
         {
@@ -738,5 +852,10 @@ public class Session : IDisposable
         }
 
         _cts.Dispose();
+    }
+    
+    ~Session()
+    {
+        Dispose();
     }
 }
