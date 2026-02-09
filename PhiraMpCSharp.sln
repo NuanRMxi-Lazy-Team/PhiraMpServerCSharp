@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Server", "PhiraMp.S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Core", "PhiraMp.Core\PhiraMp.Core.csproj", "{0320CCE2-3651-4221-AA8E-CDF2E4F6C07E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugin.SDK", "PhiraMp.Plugin.SDK\PhiraMp.Plugin.SDK.csproj", "{FC618493-0B7B-400A-98DD-57DD5FD74788}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugins.CommandPlugin", "PhiraMp.Plugins.CommandPlugin\PhiraMp.Plugins.CommandPlugin.csproj", "{B3AB2FAC-C9F6-4666-A44C-E7DE6ECEB100}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugins.CycleVoting", "PhiraMp.Plugins.CycleVoting\PhiraMp.Plugins.CycleVoting.csproj", "{406E9119-722F-4868-BB95-C9E8B93C2575}"
@@ -47,18 +45,6 @@ Global
 		{0320CCE2-3651-4221-AA8E-CDF2E4F6C07E}.Release|x64.Build.0 = Release|Any CPU
 		{0320CCE2-3651-4221-AA8E-CDF2E4F6C07E}.Release|x86.ActiveCfg = Release|Any CPU
 		{0320CCE2-3651-4221-AA8E-CDF2E4F6C07E}.Release|x86.Build.0 = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|x64.Build.0 = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Debug|x86.Build.0 = Debug|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|Any CPU.Build.0 = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|x64.ActiveCfg = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|x64.Build.0 = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|x86.ActiveCfg = Release|Any CPU
-		{FC618493-0B7B-400A-98DD-57DD5FD74788}.Release|x86.Build.0 = Release|Any CPU
 		{B3AB2FAC-C9F6-4666-A44C-E7DE6ECEB100}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B3AB2FAC-C9F6-4666-A44C-E7DE6ECEB100}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B3AB2FAC-C9F6-4666-A44C-E7DE6ECEB100}.Debug|x64.ActiveCfg = Debug|Any CPU
