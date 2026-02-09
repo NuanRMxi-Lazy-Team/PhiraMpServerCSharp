@@ -9,10 +9,11 @@ namespace PhiraMp.Server.Plugins;
 public class ServerAPIImpl : IServerAPI
 {
     private readonly ServerState _serverState;
-    private readonly ConcurrentBag<Func<IRoomContext, IUserContext, string, Task>> _roomMessageHandlers = new();
-    private readonly ConcurrentBag<Func<IRoomContext, string, Task>> _roomStateChangeHandlers = new();
-    private readonly ConcurrentBag<Func<IRoomContext, IUserContext, Task>> _userJoinHandlers = new();
-    private readonly ConcurrentBag<Func<IRoomContext, IUserContext, Task>> _userLeaveHandlers = new();
+    private readonly List<Func<IRoomContext, IUserContext, string, Task>> _roomMessageHandlers = new();
+    private readonly List<Func<IRoomContext, string, Task>> _roomStateChangeHandlers = new();
+    private readonly List<Func<IRoomContext, IUserContext, Task>> _userJoinHandlers = new();
+    private readonly List<Func<IRoomContext, IUserContext, Task>> _userLeaveHandlers = new();
+    private readonly object _lock = new();
 
     public ServerAPIImpl(ServerState serverState)
     {
@@ -21,43 +22,66 @@ public class ServerAPIImpl : IServerAPI
 
     public void SubscribeToRoomMessages(Func<IRoomContext, IUserContext, string, Task> handler)
     {
-        _roomMessageHandlers.Add(handler);
+        lock (_lock)
+        {
+            _roomMessageHandlers.Add(handler);
+        }
     }
 
     public void UnsubscribeFromRoomMessages(Func<IRoomContext, IUserContext, string, Task> handler)
     {
-        // Note: ConcurrentBag doesn't support removal, but this is acceptable for plugin lifecycle
-        // Handlers will be cleaned up when plugins are unloaded
+        lock (_lock)
+        {
+            _roomMessageHandlers.Remove(handler);
+        }
     }
 
     public void SubscribeToRoomStateChange(Func<IRoomContext, string, Task> handler)
     {
-        _roomStateChangeHandlers.Add(handler);
+        lock (_lock)
+        {
+            _roomStateChangeHandlers.Add(handler);
+        }
     }
 
     public void UnsubscribeFromRoomStateChange(Func<IRoomContext, string, Task> handler)
     {
-        // Note: ConcurrentBag doesn't support removal
+        lock (_lock)
+        {
+            _roomStateChangeHandlers.Remove(handler);
+        }
     }
 
     public void SubscribeToUserJoin(Func<IRoomContext, IUserContext, Task> handler)
     {
-        _userJoinHandlers.Add(handler);
+        lock (_lock)
+        {
+            _userJoinHandlers.Add(handler);
+        }
     }
 
     public void UnsubscribeFromUserJoin(Func<IRoomContext, IUserContext, Task> handler)
     {
-        // Note: ConcurrentBag doesn't support removal
+        lock (_lock)
+        {
+            _userJoinHandlers.Remove(handler);
+        }
     }
 
     public void SubscribeToUserLeave(Func<IRoomContext, IUserContext, Task> handler)
     {
-        _userLeaveHandlers.Add(handler);
+        lock (_lock)
+        {
+            _userLeaveHandlers.Add(handler);
+        }
     }
 
     public void UnsubscribeFromUserLeave(Func<IRoomContext, IUserContext, Task> handler)
     {
-        // Note: ConcurrentBag doesn't support removal
+        lock (_lock)
+        {
+            _userLeaveHandlers.Remove(handler);
+        }
     }
 
     public IEnumerable<IRoomContext> GetRooms()
@@ -80,7 +104,13 @@ public class ServerAPIImpl : IServerAPI
         var roomContext = new RoomContextImpl(room);
         var userContext = new UserContextImpl(user, room);
 
-        foreach (var handler in _roomMessageHandlers)
+        List<Func<IRoomContext, IUserContext, string, Task>> handlers;
+        lock (_lock)
+        {
+            handlers = new List<Func<IRoomContext, IUserContext, string, Task>>(_roomMessageHandlers);
+        }
+
+        foreach (var handler in handlers)
         {
             try
             {
@@ -97,7 +127,13 @@ public class ServerAPIImpl : IServerAPI
     {
         var roomContext = new RoomContextImpl(room);
 
-        foreach (var handler in _roomStateChangeHandlers)
+        List<Func<IRoomContext, string, Task>> handlers;
+        lock (_lock)
+        {
+            handlers = new List<Func<IRoomContext, string, Task>>(_roomStateChangeHandlers);
+        }
+
+        foreach (var handler in handlers)
         {
             try
             {
@@ -115,7 +151,13 @@ public class ServerAPIImpl : IServerAPI
         var roomContext = new RoomContextImpl(room);
         var userContext = new UserContextImpl(user, room);
 
-        foreach (var handler in _userJoinHandlers)
+        List<Func<IRoomContext, IUserContext, Task>> handlers;
+        lock (_lock)
+        {
+            handlers = new List<Func<IRoomContext, IUserContext, Task>>(_userJoinHandlers);
+        }
+
+        foreach (var handler in handlers)
         {
             try
             {
@@ -133,7 +175,13 @@ public class ServerAPIImpl : IServerAPI
         var roomContext = new RoomContextImpl(room);
         var userContext = new UserContextImpl(user, room);
 
-        foreach (var handler in _userLeaveHandlers)
+        List<Func<IRoomContext, IUserContext, Task>> handlers;
+        lock (_lock)
+        {
+            handlers = new List<Func<IRoomContext, IUserContext, Task>>(_userLeaveHandlers);
+        }
+
+        foreach (var handler in handlers)
         {
             try
             {
