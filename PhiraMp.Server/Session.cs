@@ -277,6 +277,13 @@ public class Session : IDisposable
         try
         {
             var room = User.Room ?? throw new Exception("No room");
+            
+            // Notify plugins before sending message
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchRoomMessageAsync(room, User, cmd.Message.Value);
+            }
+            
             await room.SendAsAsync(User, cmd.Message.Value);
             return new ChatResponseCommand(true);
         }
@@ -289,7 +296,7 @@ public class Session : IDisposable
     private async Task<ServerCommand?> HandleTouchesAsync(TouchesCommand cmd)
     {
         var room = User.Room;
-        if (room != null && room.Live)
+        if (room is { Live: true })
         {
             Logger.Debug($"Received {cmd.Frames.Count} touch events from {User.Id}");
             if (cmd.Frames.Count > 0)
@@ -308,7 +315,7 @@ public class Session : IDisposable
     private async Task<ServerCommand?> HandleJudgesAsync(JudgesCommand cmd)
     {
         var room = User.Room;
-        if (room != null && room.Live)
+        if (room is { Live: true })
         {
             Logger.Debug($"Received {cmd.Judges.Count} judge events from {User.Id}");
             _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerJudgesCommand(User.Id, cmd.Judges)));
@@ -325,7 +332,13 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server.Config.CycleVotingMode);
+            // 通知插件创建房间请求 - 插件可以抛出异常阻止创建
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchCreateRoomRequestAsync(User, cmd.Id);
+            }
+
+            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server);
             if (!Server.Rooms.TryAdd(cmd.Id.Value, room))
             {
                 throw new Exception("Room ID already occupied");
@@ -333,7 +346,6 @@ public class Session : IDisposable
 
             // Broadcast user info so clients can map user ID to username
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
-            await Task.Delay(1); // Ensure message order
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 
@@ -353,7 +365,14 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            if (!Server.Rooms.TryGetValue(cmd.Id.Value, out var room))
+            // 通知插件加入房间请求 - 插件可以修改目标房间 ID 或抛出异常阻止
+            var targetRoomId = cmd.Id;
+            if (Server.PluginManager != null)
+            {
+                targetRoomId = await Server.PluginManager.DispatchJoinRoomRequestAsync(User, cmd.Id, cmd.Monitor);
+            }
+
+            if (!Server.Rooms.TryGetValue(targetRoomId.Value, out var room))
                 throw new Exception("Room not found");
 
             if (room.Locked)
@@ -368,18 +387,24 @@ public class Session : IDisposable
             if (!room.AddUser(User, cmd.Monitor))
                 throw new Exception("Room is full");
 
-            Logger.Info($"User {User.Id} joined room {cmd.Id} (monitor: {cmd.Monitor})");
+            Logger.Info($"User {User.Id} joined room {targetRoomId} (monitor: {cmd.Monitor})");
 
             User.IsMonitor = cmd.Monitor;
             if (cmd.Monitor && !room.Live)
             {
                 room.Live = true;
-                Logger.Info($"Room {cmd.Id} goes live");
+                Logger.Info($"Room {targetRoomId} goes live");
             }
 
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
             await room.SendAsync(new JoinRoomMessage(User.Id, User.Name));
             User.Room = room;
+
+            // Notify plugins of user joining
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchUserJoinAsync(room, User);
+            }
 
             var response = new JoinRoomResponse(
                 room.GetClientRoomState(),
@@ -446,6 +471,12 @@ public class Session : IDisposable
             room.SetCycle(cmd.Cycle);
             await room.SendAsync(new CycleRoomMessage(cmd.Cycle));
 
+            // Notify plugins of cycle mode change
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchCycleModeChangeAsync(room, User, cmd.Cycle);
+            }
+
             return new CycleRoomResponseCommand(true);
         }
         catch (Exception ex)
@@ -477,22 +508,15 @@ public class Session : IDisposable
 
             Logger.Debug($"Chart is {chart.Name} (ID: {chart.Id})");
 
-            if (room.Cycle && room.CycleVotingMode)
+            // Set the chart
+            await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
+            room.Chart = chart;
+            await room.OnStateChangeAsync();
+
+            // Notify plugins of chart selection
+            if (Server.PluginManager != null)
             {
-                // In Cycle mode with voting enabled, store the vote
-                room.VoteChart(User, chart);
-                // Also set as current chart so clients know a chart is selected
-                room.Chart = chart;
-                await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
-                await room.OnStateChangeAsync();
-                Logger.Debug($"User {User.Id} voted for chart {chart.Id} in Cycle voting mode");
-            }
-            else
-            {
-                // In normal mode or Cycle without voting, host directly sets the chart
-                await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
-                room.Chart = chart;
-                await room.OnStateChangeAsync();
+                await Server.PluginManager.DispatchSelectChartAsync(room, User, chart);
             }
 
             return new SelectChartResponseCommand(true);
@@ -515,43 +539,18 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             if (room.State is not InternalRoomState.SelectChart)
                 throw new Exception("Invalid state");
-            if (room.GetAllUsers().Count < 2)
-                throw new Exception("If no one is looking for you to play, you can go out and relax.");
 
             room.CheckHost(User);
 
-            // In Cycle mode with voting enabled, randomly select a chart from votes
-            if (room.Cycle && room.CycleVotingMode)
+            // Allow plugins to validate or prevent start (e.g., single-player prevention, voting)
+            if (Server.PluginManager != null)
             {
-                var selectedChart = room.SelectRandomChartFromVotes();
-                if (selectedChart == null)
-                    throw new Exception("No chart selected");
-
-                room.Chart = selectedChart;
-                Logger.Info(
-                    $"Room {room.Id} in Cycle voting mode randomly selected chart {selectedChart.Id} from {room.ChartVotes.Count} votes");
-
-                // Revoke fake host status from all non-host users
-                var users = room.GetUsers();
-                foreach (var user in users)
-                {
-                    if (!room.IsHost(user))
-                    {
-                        await user.TrySendAsync(new ChangeHostCommand(false));
-                    }
-                }
-
-                // Clear votes for next round
-                room.ClearVotes();
-
-                // Notify all users of the final selected chart
-                await room.OnStateChangeAsync();
+                await Server.PluginManager.DispatchRequestStartAsync(room, User);
             }
-            else
-            {
-                if (room.Chart == null)
-                    throw new Exception("No chart selected");
-            }
+
+            // Plugins should have set the chart if needed (e.g., from votes)
+            if (room.Chart == null)
+                throw new Exception("No chart selected");
 
             Logger.Debug($"Room {room.Id} waiting for ready");
 
@@ -608,18 +607,7 @@ public class Session : IDisposable
                 {
                     await room.SendAsync(new CancelGameMessage(User.Id));
                     room.State = new InternalRoomState.SelectChart();
-                    if (room.CycleVotingMode && room.Cycle)
-                    {
-                        room.Chart = null;
-                        var users = room.GetUsers();
-                        foreach (var user in users)
-                        {
-                            if (!room.IsHost(user))
-                            {
-                                user.TrySendAsync(new ChangeHostCommand(true)).Wait();
-                            }
-                        }
-                    }
+                    room.Chart = null;
 
                     await room.OnStateChangeAsync();
                 }
@@ -663,10 +651,9 @@ public class Session : IDisposable
                 if (playingState.Aborted.Contains(User.Id))
                     throw new Exception("Aborted");
 
-                if (playingState.Results.ContainsKey(User.Id))
+                if (!playingState.Results.TryAdd(User.Id, record))
                     throw new Exception("Already uploaded");
 
-                playingState.Results[User.Id] = record;
                 await room.CheckAllReadyAsync();
             }
 

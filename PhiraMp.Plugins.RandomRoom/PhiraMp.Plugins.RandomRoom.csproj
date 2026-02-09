@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.2" />
+    <PackageReference Include="YamlDotNet" Version="16.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 引用服务器和核心 DLL，不复制到输出目录 -->
+    <Reference Include="PhiraMp.Server">
+      <HintPath>..\PhiraMp.Server\bin\Debug\net10.0\PhiraMp.Server.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PhiraMp.Core">
+      <HintPath>..\PhiraMp.Core\bin\Debug\net10.0\PhiraMp.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>

@@ -1,10 +1,12 @@
+using PhiraMp.Server.Models;
+
 namespace PhiraMp.Server;
 
 internal static class Program
 {
     private static async Task<int> Main(string[] args)
     {
-        Logger.Info("Phira Multiplayer Server (C# Implementation)");
+        Logger.Info("Phira 多人联机服务器（C#实现）");
         
         try
         {
@@ -13,7 +15,7 @@ internal static class Program
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Fatal error occurred:");
+            Logger.Error(ex, "致命错误：");
             return 1;
         }
     }
@@ -31,7 +33,7 @@ internal static class Program
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
-            Logger.Info("Shutting down...");
+            Logger.Info("正在关闭...");
             e.Cancel = true;
             cts.Cancel();
         };
@@ -40,6 +42,6 @@ internal static class Program
 
         await Task.WhenAny(serverTask, Task.Delay(Timeout.Infinite, cts.Token));
 
-        Logger.Info("Server stopped");
+        Logger.Info("服务器已终止");
     }
 }
