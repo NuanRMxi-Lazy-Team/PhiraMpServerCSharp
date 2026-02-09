@@ -79,6 +79,10 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             
             // 获取所有可用的房间
             var allRooms = _api.GetAllRooms();
+            // 筛选条件：
+            // 1. 房间未锁定
+            // 2. 房间处于选歌状态（SelectChart），这样用户可以加入
+            // 3. 房间名不是保留名称
             var availableRooms = allRooms
                 .Where(r => !r.Locked && 
                            r.State is InternalRoomState.SelectChart &&
