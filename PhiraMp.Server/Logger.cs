@@ -6,7 +6,7 @@ using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
 
-namespace PhiraMpServer.Common;
+namespace PhiraMp.Server;
 
 public enum LogLevel
 {

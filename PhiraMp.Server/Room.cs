@@ -1,60 +1,7 @@
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using PhiraMpServer.Common;
+using PhiraMp.Core;
+using PhiraMp.Server.Models;
 
-namespace PhiraMpServer.Server;
-
-public class ChartInfo
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-}
-
-public class RecordInfo
-{
-    public int Id { get; set; }
-    public int Player { get; set; }
-    public int Score { get; set; }
-    public int Perfect { get; set; }
-    public int Good { get; set; }
-    public int Bad { get; set; }
-    public int Miss { get; set; }
-    public int MaxCombo { get; set; }
-    public float Accuracy { get; set; }
-    public bool FullCombo { get; set; }
-    public float Std { get; set; }
-    public float StdScore { get; set; }
-}
-
-public abstract record InternalRoomState
-{
-    public record SelectChart : InternalRoomState;
-
-    public record WaitForReady : InternalRoomState
-    {
-        public HashSet<int> Started { get; init; } = new();
-    }
-
-    public record Playing : InternalRoomState
-    {
-        public Dictionary<int, RecordInfo> Results { get; init; } = new();
-        public HashSet<int> Aborted { get; init; } = new();
-    }
-
-    public RoomStateData ToClient(int? chartId)
-    {
-        return this switch
-        {
-            SelectChart => new RoomStateData(RoomState.SelectChart, chartId),
-            WaitForReady => new RoomStateData(RoomState.WaitingForReady, null),
-            Playing => new RoomStateData(RoomState.Playing, null),
-            _ => throw new InvalidOperationException()
-        };
-    }
-}
+namespace PhiraMp.Server;
 
 public class Room
 {
@@ -104,6 +51,7 @@ public class Room
                 }
             }
         }
+
         Cycle = cycle;
     }
 
@@ -242,7 +190,7 @@ public class Room
         // This is more memory-efficient than Task.WhenAll for large broadcasts
         for (int i = 0; i < users.Count; i++)
         {
-            _ = users[i].TrySendAsync(cmd);  // Fire and forget
+            _ = users[i].TrySendAsync(cmd); // Fire and forget
         }
     }
 
@@ -341,6 +289,7 @@ public class Room
 
                     await OnStateChangeAsync();
                 }
+
                 break;
             }
 
@@ -352,7 +301,7 @@ public class Room
                 {
                     await SendAsync(new GameEndMessage());
                     State = new InternalRoomState.SelectChart();
-                    
+
                     // Always clear votes and chart to prevent memory leaks
                     Chart = null;
                     ClearVotes();
@@ -387,6 +336,7 @@ public class Room
 
                     await OnStateChangeAsync();
                 }
+
                 break;
             }
         }

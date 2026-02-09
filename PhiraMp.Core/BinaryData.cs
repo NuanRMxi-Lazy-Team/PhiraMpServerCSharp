@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
-namespace PhiraMpServer.Common;
+namespace PhiraMp.Core;
 
 /// <summary>
 /// Binary reader compatible with Rust implementation

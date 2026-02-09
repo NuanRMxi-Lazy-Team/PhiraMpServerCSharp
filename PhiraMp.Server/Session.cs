@@ -1,147 +1,22 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Net.Sockets;
-using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
-using PhiraMpServer.Common;
+using PhiraMp.Core;
+using PhiraMp.Server.Models;
 
-namespace PhiraMpServer.Server;
-
-public class PhiraUserInfo
-{
-    [JsonPropertyName("id")]
-    public int Id { get; set; }
-
-    [JsonPropertyName("name")]
-    public string Name { get; set; } = string.Empty;
-
-    [JsonPropertyName("language")]
-    public string Language { get; set; } = "en-US";
-}
-
-public class User
-{
-    public int Id { get; set; }
-    public string Name { get; set; }
-    public string Language { get; set; }
-    public ServerState Server { get; set; }
-    public WeakReference<Session>? SessionRef { get; set; }
-    public Room? Room { get; set; }
-    public bool IsMonitor { get; set; }
-    public float GameTime { get; set; } = float.NegativeInfinity;
-    public object DangleMark { get; set; } = new();
-    private bool _dangling;
-
-    private readonly object _lock = new();
-
-    public User(int id, string name, string language, ServerState server)
-    {
-        Id = id;
-        Name = name;
-        Language = language;
-        Server = server;
-    }
-
-    public UserInfo ToInfo()
-    {
-        return new UserInfo(Id, Name, IsMonitor);
-    }
-
-    public bool CanMonitor()
-    {
-        return Server.Config.Monitors.Contains(Id);
-    }
-
-    public void SetSession(Session session)
-    {
-        lock (_lock)
-        {
-            SessionRef = new WeakReference<Session>(session);
-            DangleMark = new object();
-            _dangling = false;
-        }
-    }
-
-    public async Task TrySendAsync(ServerCommand cmd)
-    {
-        Session? session = null;
-        lock (_lock)
-        {
-            SessionRef?.TryGetTarget(out session);
-        }
-
-        if (session != null)
-        {
-            await session.TrySendAsync(cmd);
-        }
-    }
-
-    public async Task DangleAsync()
-    {
-        lock (_lock)
-        {
-            if (_dangling) return;
-            _dangling = true;
-        }
-
-        Logger.Warning($"User {Id} dangling");
-
-        var room = Room;
-        if (room != null)
-        {
-            if (room.State is InternalRoomState.Playing)
-            {
-                Logger.Warning($"User {Id} lost connection while playing, aborting");
-                Server.Users.TryRemove(Id, out _);
-                if (await room.OnUserLeaveAsync(this))
-                {
-                    Server.Rooms.TryRemove(room.Id.Value, out _);
-                }
-                return;
-            }
-        }
-
-        var dangleMark = new object();
-        var userId = Id;
-        var server = Server;
-        DangleMark = dangleMark;
-
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(TimeSpan.FromSeconds(10));
-
-            if (ReferenceEquals(DangleMark, dangleMark))
-            {
-                var currentRoom = Room;
-                if (currentRoom != null)
-                {
-                    server.Users.TryRemove(userId, out _);
-                    if (await currentRoom.OnUserLeaveAsync(this))
-                    {
-                        server.Rooms.TryRemove(currentRoom.Id.Value, out _);
-                    }
-                }
-            }
-        });
-    }
-}
+namespace PhiraMp.Server;
 
 public class Session : IDisposable
 {
     private const string PhiraHost = "https://phira.5wyxi.com";
-    
+
     // Shared HttpClient instance to avoid port exhaustion
     private static readonly HttpClient SharedHttpClient = CreateSharedHttpClient();
-    
+
     // Authentication token cache with shorter TTL (1 minute) for memory efficiency
     private static readonly ConcurrentDictionary<string, (PhiraUserInfo info, long expireTicks)> AuthTokenCache = new();
     private const long AuthCacheTtlTicks = 1L * 60L * 10_000_000L; // 1 minute in ticks (shorter to avoid memory bloat)
-    
+
     // HTTP request timeout (seconds)
     private const int HttpTimeoutSeconds = 10;
 
@@ -209,16 +84,9 @@ public class Session : IDisposable
                 await Task.Delay(TimeSpan.FromSeconds(10)); // Clean up every 10 seconds (more aggressive)
 
                 var now = DateTime.UtcNow.Ticks;
-                var expiredTokens = new List<string>();
-                
                 // Collect expired tokens
-                foreach (var kvp in AuthTokenCache)
-                {
-                    if (kvp.Value.expireTicks < now)
-                    {
-                        expiredTokens.Add(kvp.Key);
-                    }
-                }
+                var expiredTokens =
+                    (from kvp in AuthTokenCache where kvp.Value.expireTicks < now select kvp.Key).ToList();
 
                 // Remove them
                 foreach (var token in expiredTokens)
@@ -228,7 +96,8 @@ public class Session : IDisposable
 
                 if (expiredTokens.Count > 0)
                 {
-                    Logger.Debug($"Cleaned up {expiredTokens.Count} expired auth tokens, cache size: {AuthTokenCache.Count}");
+                    Logger.Debug(
+                        $"Cleaned up {expiredTokens.Count} expired auth tokens, cache size: {AuthTokenCache.Count}");
                 }
             }
         }
@@ -428,8 +297,10 @@ public class Session : IDisposable
                 var lastFrame = cmd.Frames[^1];
                 User.GameTime = lastFrame.Time;
             }
+
             _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerTouchesCommand(User.Id, cmd.Frames)));
         }
+
         await Task.CompletedTask;
         return null;
     }
@@ -442,6 +313,7 @@ public class Session : IDisposable
             Logger.Debug($"Received {cmd.Judges.Count} judge events from {User.Id}");
             _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerJudgesCommand(User.Id, cmd.Judges)));
         }
+
         await Task.CompletedTask;
         return null;
     }
@@ -656,8 +528,9 @@ public class Session : IDisposable
                     throw new Exception("No chart selected");
 
                 room.Chart = selectedChart;
-                Logger.Info($"Room {room.Id} in Cycle voting mode randomly selected chart {selectedChart.Id} from {room.ChartVotes.Count} votes");
-                
+                Logger.Info(
+                    $"Room {room.Id} in Cycle voting mode randomly selected chart {selectedChart.Id} from {room.ChartVotes.Count} votes");
+
                 // Revoke fake host status from all non-host users
                 var users = room.GetUsers();
                 foreach (var user in users)
@@ -667,10 +540,10 @@ public class Session : IDisposable
                         await user.TrySendAsync(new ChangeHostCommand(false));
                     }
                 }
-                
+
                 // Clear votes for next round
                 room.ClearVotes();
-                
+
                 // Notify all users of the final selected chart
                 await room.OnStateChangeAsync();
             }
@@ -747,6 +620,7 @@ public class Session : IDisposable
                             }
                         }
                     }
+
                     await room.OnStateChangeAsync();
                 }
                 else
@@ -778,7 +652,8 @@ public class Session : IDisposable
             if (record == null || record.Player != User.Id)
                 throw new Exception("Invalid record");
 
-            Logger.Debug($"Room {room.Id} user {User.Id} played: Score={record.Score}, Accuracy={record.Accuracy}, FC={record.FullCombo}");
+            Logger.Debug(
+                $"Room {room.Id} user {User.Id} played: Score={record.Score}, Accuracy={record.Accuracy}, FC={record.FullCombo}");
 
             await room.SendAsync(new PlayedMessage(
                 User.Id, record.Score, record.Accuracy, record.FullCombo));
@@ -853,7 +728,7 @@ public class Session : IDisposable
 
         _cts.Dispose();
     }
-    
+
     ~Session()
     {
         Dispose();

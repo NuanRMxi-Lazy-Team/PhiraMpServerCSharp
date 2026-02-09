@@ -1,14 +1,8 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using PhiraMpServer.Common;
-using PhiraMpServer.Server;
+namespace PhiraMp.Server;
 
-namespace PhiraMpServer;
-
-class Program
+internal static class Program
 {
-    static async Task<int> Main(string[] args)
+    private static async Task<int> Main(string[] args)
     {
         Logger.Info("Phira Multiplayer Server (C# Implementation)");
         
@@ -24,15 +18,15 @@ class Program
         }
     }
 
-    static async Task RunServerAsync()
+    private static async Task RunServerAsync()
     {
         var config = ServerConfig.Load();
 
-        Logger.Info("Starting Phira Multiplayer Server");
-        Logger.Info($"Bind IP: {config.BindIp}, Port: {config.Port}, Room Max Players: {config.RoomMaxPlayers}");
-        Logger.Info("Press Ctrl+C to stop the server");
+        Logger.Info("正在开启Phira多人联机服务器...");
+        Logger.Info($"绑定IP: {config.BindIp}, 端口: {config.Port}, 房间最大玩家数: {config.RoomMaxPlayers}");
+        Logger.Info("使用Ctrl+C可以安全地关闭服务器");
 
-        using var server = new Server.PhiraMpServer(config);
+        using var server = new PhiraMpServer(config);
 
         var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
