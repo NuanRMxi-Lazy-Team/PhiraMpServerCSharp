@@ -1,60 +1,7 @@
-using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using PhiraMpServer.Common;
+using PhiraMp.Core;
+using PhiraMp.Server.Models;
 
-namespace PhiraMpServer.Server;
-
-public class ChartInfo
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-}
-
-public class RecordInfo
-{
-    public int Id { get; set; }
-    public int Player { get; set; }
-    public int Score { get; set; }
-    public int Perfect { get; set; }
-    public int Good { get; set; }
-    public int Bad { get; set; }
-    public int Miss { get; set; }
-    public int MaxCombo { get; set; }
-    public float Accuracy { get; set; }
-    public bool FullCombo { get; set; }
-    public float Std { get; set; }
-    public float StdScore { get; set; }
-}
-
-public abstract record InternalRoomState
-{
-    public record SelectChart : InternalRoomState;
-
-    public record WaitForReady : InternalRoomState
-    {
-        public HashSet<int> Started { get; init; } = new();
-    }
-
-    public record Playing : InternalRoomState
-    {
-        public Dictionary<int, RecordInfo> Results { get; init; } = new();
-        public HashSet<int> Aborted { get; init; } = new();
-    }
-
-    public RoomStateData ToClient(int? chartId)
-    {
-        return this switch
-        {
-            SelectChart => new RoomStateData(RoomState.SelectChart, chartId),
-            WaitForReady => new RoomStateData(RoomState.WaitingForReady, null),
-            Playing => new RoomStateData(RoomState.Playing, null),
-            _ => throw new InvalidOperationException()
-        };
-    }
-}
+namespace PhiraMp.Server;
 
 public class Room
 {
@@ -65,20 +12,19 @@ public class Room
     public bool Locked { get; set; }
     public bool Cycle { get; private set; }
     public ChartInfo? Chart { get; set; }
-    public bool CycleVotingMode { get; set; }
-    public Dictionary<int, ChartInfo> ChartVotes { get; set; } = new();
 
     private readonly List<User> _users = new();
     private readonly List<User> _monitors = new();
     private readonly object _lock = new();
     private readonly int _maxUsers;
+    private readonly ServerState? _serverState;
 
-    public Room(RoomId id, User host, int maxUsers = 8, bool cycleVotingMode = false)
+    public Room(RoomId id, User host, int maxUsers = 8, ServerState? serverState = null)
     {
         Id = id;
         Host = host;
         _maxUsers = maxUsers;
-        CycleVotingMode = cycleVotingMode;
+        _serverState = serverState;
         _users.Add(host);
     }
 
@@ -92,52 +38,14 @@ public class Room
 
     public void SetCycle(bool cycle)
     {
-        if (CycleVotingMode)
-        {
-            // 告诉所有客户端你是host（除了真host）
-            var users = GetUsers();
-            foreach (var user in users)
-            {
-                if (!IsHost(user))
-                {
-                    user.TrySendAsync(new ChangeHostCommand(cycle)).Wait();
-                }
-            }
-        }
         Cycle = cycle;
     }
 
     public void CheckCanSelectChart(User user)
     {
-        // Only in Cycle mode with voting enabled, all users can select charts
-        if (Cycle && CycleVotingMode)
-        {
-            return;
-        }
-        else
-        {
-            // In normal mode or Cycle without voting, only host can select
-            CheckHost(user);
-        }
-    }
-
-    public void VoteChart(User user, ChartInfo chart)
-    {
-        ChartVotes[user.Id] = chart;
-    }
-
-    public ChartInfo? SelectRandomChartFromVotes()
-    {
-        if (ChartVotes.Count == 0)
-            return null;
-
-        var charts = ChartVotes.Values.ToList();
-        return charts[Random.Shared.Next(charts.Count)];
-    }
-
-    public void ClearVotes()
-    {
-        ChartVotes.Clear();
+        // Only host can select charts by default
+        // Plugins can override this behavior
+        CheckHost(user);
     }
 
     public RoomStateData GetClientRoomState()
@@ -166,6 +74,19 @@ public class Room
     public async Task OnStateChangeAsync()
     {
         await BroadcastAsync(new ChangeStateCommand(GetClientRoomState()));
+        
+        // Notify plugins of state change
+        if (_serverState?.PluginManager != null)
+        {
+            var stateName = State switch
+            {
+                InternalRoomState.SelectChart => "SelectChart",
+                InternalRoomState.WaitForReady => "WaitingForReady",
+                InternalRoomState.Playing => "Playing",
+                _ => "Unknown"
+            };
+            await _serverState.PluginManager.DispatchRoomStateChangeAsync(this, stateName);
+        }
     }
 
     public bool AddUser(User user, bool monitor)
@@ -190,6 +111,10 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有用户
+    /// </summary>
+    /// <returns></returns>
     public List<User> GetUsers()
     {
         lock (_lock)
@@ -198,6 +123,9 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有监视器
+    /// </summary>
     public List<User> GetMonitors()
     {
         lock (_lock)
@@ -206,6 +134,9 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有玩家（排除监视器）
+    /// </summary>
     public List<User> GetAllUsers()
     {
         lock (_lock)
@@ -242,7 +173,7 @@ public class Room
         // This is more memory-efficient than Task.WhenAll for large broadcasts
         for (int i = 0; i < users.Count; i++)
         {
-            _ = users[i].TrySendAsync(cmd);  // Fire and forget
+            _ = users[i].TrySendAsync(cmd); // Fire and forget
         }
     }
 
@@ -279,6 +210,13 @@ public class Room
     public async Task<bool> OnUserLeaveAsync(User user)
     {
         await SendAsync(new LeaveRoomMessage(user.Id, user.Name));
+        
+        // Notify plugins of user leaving
+        if (_serverState?.PluginManager != null)
+        {
+            await _serverState.PluginManager.DispatchUserLeaveAsync(this, user);
+        }
+        
         user.Room = null;
 
         lock (_lock)
@@ -341,6 +279,7 @@ public class Room
 
                     await OnStateChangeAsync();
                 }
+
                 break;
             }
 
@@ -352,12 +291,11 @@ public class Room
                 {
                     await SendAsync(new GameEndMessage());
                     State = new InternalRoomState.SelectChart();
-                    
-                    // Always clear votes and chart to prevent memory leaks
-                    Chart = null;
-                    ClearVotes();
 
-                    if (Cycle && !CycleVotingMode)
+                    // Clear chart to prevent memory leaks
+                    Chart = null;
+
+                    if (Cycle)
                     {
                         Logger.Debug($"Room {Id} cycling");
 
@@ -373,20 +311,10 @@ public class Room
                         await oldHost.TrySendAsync(new ChangeHostCommand(false));
                         await newHost.TrySendAsync(new ChangeHostCommand(true));
                     }
-                    else if (Cycle && CycleVotingMode)
-                    {
-                        // 告诉所有客户端你是host（除了真host）
-                        foreach (var user in users)
-                        {
-                            if (!IsHost(user))
-                            {
-                                user.TrySendAsync(new ChangeHostCommand(true)).Wait();
-                            }
-                        }
-                    }
 
                     await OnStateChangeAsync();
                 }
+
                 break;
             }
         }

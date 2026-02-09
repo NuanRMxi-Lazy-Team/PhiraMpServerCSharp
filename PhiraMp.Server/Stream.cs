@@ -1,34 +1,11 @@
-﻿using System;
-using System.Buffers;
-using System.Collections.Generic;
-using System.IO;
+﻿using System.Buffers;
 using System.Net.Sockets;
-using System.Threading;
 using System.Threading.Channels;
-using System.Threading.Tasks;
+using PhiraMp.Core;
+using BinaryReader = PhiraMp.Core.BinaryReader;
+using BinaryWriter = PhiraMp.Core.BinaryWriter;
 
-namespace PhiraMpServer.Common;
-
-/// <summary>
-/// Helper class for handling network disconnection exceptions
-/// </summary>
-public static class DisconnectionHelper
-{
-    /// <summary>
-    /// Checks if an exception represents a client disconnection (not an error to log)
-    /// </summary>
-    public static bool IsClientDisconnection(Exception ex)
-    {
-        return ex switch
-        {
-            SocketException { ErrorCode: 10054 } => true, // Connection reset by peer
-            SocketException { ErrorCode: 10053 } => true, // Connection aborted
-            IOException { InnerException: SocketException { ErrorCode: 10054 or 10053 } } => true,
-            EndOfStreamException => true, // Graceful disconnect
-            _ => false
-        };
-    }
-}
+namespace PhiraMp.Server;
 
 /// <summary>
 /// Bidirectional TCP stream with framing protocol
@@ -329,6 +306,7 @@ public class ClientStream : IDisposable
         {
             throw new InvalidOperationException("Failed to read version from client");
         }
+
         Version = (byte)versionByte;
         Logger.Debug($"Client version: {Version}");
 
@@ -368,7 +346,8 @@ public class ClientStream : IDisposable
                     command.WriteBinary(writer);
                     var payload = writer.ToArray();
 
-                    Logger.Debug($"Sending {payload.Length} bytes ({command.GetType().Name}): {BitConverter.ToString(payload)}");
+                    Logger.Debug(
+                        $"Sending {payload.Length} bytes ({command.GetType().Name}): {BitConverter.ToString(payload)}");
 
                     // Write ULEB128 length
                     uint length = (uint)payload.Length;
@@ -401,7 +380,7 @@ public class ClientStream : IDisposable
             // Normal shutdown
             Logger.Debug("Send loop cancelled");
         }
-        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
+        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx &&
                                        (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
         {
             // Client disconnected unexpectedly during send
@@ -486,7 +465,8 @@ public class ClientStream : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"Invalid packet: {BitConverter.ToString(buffer, 0, Math.Min((int)length, 100))}: {ex.Message}");
+                    Logger.Warning(
+                        $"Invalid packet: {BitConverter.ToString(buffer, 0, Math.Min((int)length, 100))}: {ex.Message}");
                     // Continue processing instead of terminating connection
                     // This allows recovery from corrupted packets
                     continue;
@@ -498,7 +478,7 @@ public class ClientStream : IDisposable
             // Normal shutdown
             Logger.Debug("Receive loop cancelled");
         }
-        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx && 
+        catch (IOException ioEx) when (ioEx.InnerException is SocketException socketEx &&
                                        (socketEx.ErrorCode == 10054 || socketEx.ErrorCode == 10053))
         {
             // Client disconnected unexpectedly (connection reset/aborted)

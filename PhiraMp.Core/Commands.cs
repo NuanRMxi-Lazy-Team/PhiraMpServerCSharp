@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-
-namespace PhiraMpServer.Common;
+namespace PhiraMp.Core;
 
 // ============ Data Types ============
 
