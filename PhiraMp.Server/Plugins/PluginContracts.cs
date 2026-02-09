@@ -1,4 +1,5 @@
 using System.ComponentModel.Composition;
+using PhiraMp.Core;
 using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server.Plugins;
@@ -82,6 +83,26 @@ public interface ISelectChartHandler
 public interface ICycleModeChangeHandler
 {
     Task HandleCycleModeChangeAsync(CycleModeChangeContext context);
+}
+
+/// <summary>
+/// 加入房间请求处理器接口 - 导出此接口以拦截加入房间请求
+/// 使用 [Export(typeof(IJoinRoomRequestHandler))] 注册
+/// 插件可以修改目标房间 ID 或抛出异常来阻止加入
+/// </summary>
+public interface IJoinRoomRequestHandler
+{
+    Task HandleJoinRoomRequestAsync(JoinRoomRequestContext context);
+}
+
+/// <summary>
+/// 创建房间请求处理器接口 - 导出此接口以拦截创建房间请求
+/// 使用 [Export(typeof(ICreateRoomRequestHandler))] 注册
+/// 插件可以抛出异常来阻止房间创建
+/// </summary>
+public interface ICreateRoomRequestHandler
+{
+    Task HandleCreateRoomRequestAsync(CreateRoomRequestContext context);
 }
 
 /// <summary>
@@ -260,6 +281,50 @@ public class CycleModeChangeContext
         Room = room;
         User = user;
         CycleEnabled = cycleEnabled;
+    }
+}
+
+/// <summary>
+/// 加入房间请求事件上下文
+/// </summary>
+public class JoinRoomRequestContext
+{
+    /// <summary>发起请求的用户</summary>
+    public User User { get; }
+    
+    /// <summary>原始请求的房间 ID</summary>
+    public RoomId OriginalRoomId { get; }
+    
+    /// <summary>目标房间 ID（插件可以修改此值来重定向用户）</summary>
+    public RoomId TargetRoomId { get; set; }
+    
+    /// <summary>是否为监视模式</summary>
+    public bool Monitor { get; }
+    
+    public JoinRoomRequestContext(User user, RoomId roomId, bool monitor)
+    {
+        User = user;
+        OriginalRoomId = roomId;
+        TargetRoomId = roomId;
+        Monitor = monitor;
+    }
+}
+
+/// <summary>
+/// 创建房间请求事件上下文
+/// </summary>
+public class CreateRoomRequestContext
+{
+    /// <summary>发起请求的用户</summary>
+    public User User { get; }
+    
+    /// <summary>请求创建的房间 ID</summary>
+    public RoomId RoomId { get; }
+    
+    public CreateRoomRequestContext(User user, RoomId roomId)
+    {
+        User = user;
+        RoomId = roomId;
     }
 }
 

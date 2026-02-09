@@ -1,6 +1,7 @@
 using System.ComponentModel.Composition;
 using System.ComponentModel.Composition.Hosting;
 using System.Reflection;
+using PhiraMp.Core;
 using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server.Plugins;
@@ -42,6 +43,12 @@ public class PluginManager : IDisposable
 
     [ImportMany(typeof(ICycleModeChangeHandler))]
     public IEnumerable<ICycleModeChangeHandler>? CycleModeChangeHandlers { get; set; }
+
+    [ImportMany(typeof(IJoinRoomRequestHandler))]
+    public IEnumerable<IJoinRoomRequestHandler>? JoinRoomRequestHandlers { get; set; }
+
+    [ImportMany(typeof(ICreateRoomRequestHandler))]
+    public IEnumerable<ICreateRoomRequestHandler>? CreateRoomRequestHandlers { get; set; }
 
     public PluginManager(ServerState serverState, string pluginDirectory = "plugins")
     {
@@ -165,6 +172,20 @@ public class PluginManager : IDisposable
     private void LogPluginLoadSummary()
     {
         Logger.Info($"使用 MEF 加载了 {_loadedPlugins.Count} 个插件");
+        if (PluginModules?.Any() == true || MessageHandlers?.Any() == true || 
+            StateHandlers?.Any() == true || RequestStartHandlers?.Any() == true ||
+            SelectChartHandlers?.Any() == true || CycleModeChangeHandlers?.Any() == true ||
+            JoinRoomRequestHandlers?.Any() == true || CreateRoomRequestHandlers?.Any() == true)
+        {
+            Logger.Info($"  - {PluginModules?.Count() ?? 0} 个模块");
+            Logger.Info($"  - {MessageHandlers?.Count() ?? 0} 个消息处理器");
+            Logger.Info($"  - {StateHandlers?.Count() ?? 0} 个状态处理器");
+            Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} 个游戏开始处理器");
+            Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} 个选歌处理器");
+            Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} 个循环模式处理器");
+            Logger.Info($"  - {JoinRoomRequestHandlers?.Count() ?? 0} 个加入房间请求处理器");
+            Logger.Info($"  - {CreateRoomRequestHandlers?.Count() ?? 0} 个创建房间请求处理器");
+        }
     }
 
     /// <summary>
@@ -393,6 +414,53 @@ public class PluginManager : IDisposable
             catch (Exception ex)
             {
                 Logger.Error(ex, $"循环模式处理器错误 {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 分发加入房间请求到所有处理器 - 插件可以修改目标房间或抛出异常阻止
+    /// </summary>
+    public async Task<RoomId> DispatchJoinRoomRequestAsync(User user, RoomId roomId, bool monitor)
+    {
+        if (JoinRoomRequestHandlers == null) return roomId;
+
+        var context = new JoinRoomRequestContext(user, roomId, monitor);
+        foreach (var handler in JoinRoomRequestHandlers)
+        {
+            try
+            {
+                await handler.HandleJoinRoomRequestAsync(context);
+            }
+            catch
+            {
+                // 插件抛出异常时重新抛出以阻止加入
+                throw;
+            }
+        }
+
+        // 返回可能被插件修改的目标房间 ID
+        return context.TargetRoomId;
+    }
+
+    /// <summary>
+    /// 分发创建房间请求到所有处理器 - 插件可以抛出异常阻止创建
+    /// </summary>
+    public async Task DispatchCreateRoomRequestAsync(User user, RoomId roomId)
+    {
+        if (CreateRoomRequestHandlers == null) return;
+
+        var context = new CreateRoomRequestContext(user, roomId);
+        foreach (var handler in CreateRoomRequestHandlers)
+        {
+            try
+            {
+                await handler.HandleCreateRoomRequestAsync(context);
+            }
+            catch
+            {
+                // 插件抛出异常时重新抛出以阻止创建
+                throw;
             }
         }
     }

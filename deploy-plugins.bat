@@ -34,6 +34,14 @@ if exist "PhiraMp.Plugins.SinglePlayerPrevention\bin\Debug\net10.0\PhiraMp.Plugi
     echo [FAIL] SinglePlayerPreventionPlugin not found - build the solution first
 )
 
+REM Copy RandomRoomPlugin
+if exist "PhiraMp.Plugins.RandomRoom\bin\Debug\net10.0\PhiraMp.Plugins.RandomRoom.dll" (
+    copy /Y "PhiraMp.Plugins.RandomRoom\bin\Debug\net10.0\PhiraMp.Plugins.RandomRoom.dll" "%PLUGINS_DIR%\"
+    echo [OK] RandomRoomPlugin deployed
+) else (
+    echo [FAIL] RandomRoomPlugin not found - build the solution first
+)
+
 echo.
 echo Plugin deployment complete!
 echo Plugins directory: %PLUGINS_DIR%

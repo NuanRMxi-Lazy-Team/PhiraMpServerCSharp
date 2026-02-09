@@ -332,6 +332,12 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
+            // 通知插件创建房间请求 - 插件可以抛出异常阻止创建
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchCreateRoomRequestAsync(User, cmd.Id);
+            }
+
             var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server);
             if (!Server.Rooms.TryAdd(cmd.Id.Value, room))
             {
@@ -359,7 +365,14 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            if (!Server.Rooms.TryGetValue(cmd.Id.Value, out var room))
+            // 通知插件加入房间请求 - 插件可以修改目标房间 ID 或抛出异常阻止
+            var targetRoomId = cmd.Id;
+            if (Server.PluginManager != null)
+            {
+                targetRoomId = await Server.PluginManager.DispatchJoinRoomRequestAsync(User, cmd.Id, cmd.Monitor);
+            }
+
+            if (!Server.Rooms.TryGetValue(targetRoomId.Value, out var room))
                 throw new Exception("Room not found");
 
             if (room.Locked)
@@ -374,13 +387,13 @@ public class Session : IDisposable
             if (!room.AddUser(User, cmd.Monitor))
                 throw new Exception("Room is full");
 
-            Logger.Info($"User {User.Id} joined room {cmd.Id} (monitor: {cmd.Monitor})");
+            Logger.Info($"User {User.Id} joined room {targetRoomId} (monitor: {cmd.Monitor})");
 
             User.IsMonitor = cmd.Monitor;
             if (cmd.Monitor && !room.Live)
             {
                 room.Live = true;
-                Logger.Info($"Room {cmd.Id} goes live");
+                Logger.Info($"Room {targetRoomId} goes live");
             }
 
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));

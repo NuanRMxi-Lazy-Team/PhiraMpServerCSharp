@@ -35,6 +35,14 @@ else
     echo "✗ SinglePlayerPreventionPlugin not found - build the solution first"
 fi
 
+# Copy RandomRoomPlugin
+if [ -f "PhiraMp.Plugins.RandomRoom/bin/Debug/net10.0/PhiraMp.Plugins.RandomRoom.dll" ]; then
+    cp "PhiraMp.Plugins.RandomRoom/bin/Debug/net10.0/PhiraMp.Plugins.RandomRoom.dll" "$PLUGINS_DIR/"
+    echo "✓ RandomRoomPlugin deployed"
+else
+    echo "✗ RandomRoomPlugin not found - build the solution first"
+fi
+
 echo ""
 echo "Plugin deployment complete!"
 echo "Plugins directory: $PLUGINS_DIR"
