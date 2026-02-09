@@ -651,10 +651,9 @@ public class Session : IDisposable
                 if (playingState.Aborted.Contains(User.Id))
                     throw new Exception("Aborted");
 
-                if (playingState.Results.ContainsKey(User.Id))
+                if (!playingState.Results.TryAdd(User.Id, record))
                     throw new Exception("Already uploaded");
 
-                playingState.Results[User.Id] = record;
                 await room.CheckAllReadyAsync();
             }
 

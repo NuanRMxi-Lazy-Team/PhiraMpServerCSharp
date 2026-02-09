@@ -1,5 +1,4 @@
 using System.ComponentModel.Composition;
-using PhiraMp.Server;
 using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Plugins.SinglePlayerPrevention;
@@ -58,7 +57,7 @@ public class SinglePlayerPreventionPlugin : IPluginModule, IRequestStartHandler
             // 向房间发送提示消息
             await _context!.API.SendRoomMessageAsync(
                 context.Room, 
-                $"⚠️ 至少需要 {_config.MinPlayers} 名玩家才能开始游戏（当前 {playerCount} 名）");
+                $"⚠至少需要 {_config.MinPlayers} 名玩家才能开始游戏（当前 {playerCount} 名）");
             
             throw new Exception(message);
         }

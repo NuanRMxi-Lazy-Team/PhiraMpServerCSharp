@@ -171,21 +171,7 @@ public class PluginManager : IDisposable
     /// </summary>
     private void LogPluginLoadSummary()
     {
-        Logger.Info($"使用 MEF 加载了 {_loadedPlugins.Count} 个插件");
-        if (PluginModules?.Any() == true || MessageHandlers?.Any() == true || 
-            StateHandlers?.Any() == true || RequestStartHandlers?.Any() == true ||
-            SelectChartHandlers?.Any() == true || CycleModeChangeHandlers?.Any() == true ||
-            JoinRoomRequestHandlers?.Any() == true || CreateRoomRequestHandlers?.Any() == true)
-        {
-            Logger.Info($"  - {PluginModules?.Count() ?? 0} 个模块");
-            Logger.Info($"  - {MessageHandlers?.Count() ?? 0} 个消息处理器");
-            Logger.Info($"  - {StateHandlers?.Count() ?? 0} 个状态处理器");
-            Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} 个游戏开始处理器");
-            Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} 个选歌处理器");
-            Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} 个循环模式处理器");
-            Logger.Info($"  - {JoinRoomRequestHandlers?.Count() ?? 0} 个加入房间请求处理器");
-            Logger.Info($"  - {CreateRoomRequestHandlers?.Count() ?? 0} 个创建房间请求处理器");
-        }
+        Logger.Info($"已加载 {_loadedPlugins.Count} 个插件");
     }
 
     /// <summary>
