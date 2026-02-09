@@ -5,39 +5,46 @@ using PhiraMp.Server.Plugins;
 namespace PhiraMp.Plugins.CommandPlugin;
 
 /// <summary>
-/// Command plugin using MEF - no forced base class or SDK dependency
-/// Exports both IPluginModule and IRoomMessageHandler
+/// 命令插件 - 处理房间内的命令
+/// 使用 MEF 发现，支持 /kick, /help, /info 等命令
 /// </summary>
 [Export(typeof(IPluginModule))]
 [Export(typeof(IRoomMessageHandler))]
 public class CommandPlugin : IPluginModule, IRoomMessageHandler
 {
-    private readonly Dictionary<string, Func<Room, User, string[], Task>> _commands = new();
+    private readonly Dictionary<string, CommandHandler> _commands = new();
     private PluginContext? _context;
+
+    /// <summary>
+    /// 命令处理器委托
+    /// </summary>
+    private delegate Task CommandHandler(Room room, User user, string[] args);
 
     public async Task InitializeAsync(PluginContext context)
     {
         _context = context;
         
-        // Register commands
-        RegisterCommand("kick", HandleKickCommand);
-        RegisterCommand("help", HandleHelpCommand);
-        RegisterCommand("info", HandleInfoCommand);
+        // 注册命令
+        RegisterCommand("kick", HandleKickCommand, "踢出用户（仅房主）");
+        RegisterCommand("help", HandleHelpCommand, "显示帮助信息");
+        RegisterCommand("info", HandleInfoCommand, "显示插件信息");
+        RegisterCommand("list", HandleListCommand, "列出房间内所有玩家");
+        RegisterCommand("lock", HandleLockCommand, "锁定/解锁房间（仅房主）");
         
-        Console.WriteLine("[CommandPlugin] Initialized with MEF - No SDK required!");
+        context.Logger.Info($"已初始化，注册了 {_commands.Count} 个命令");
         await Task.CompletedTask;
     }
 
     public Task ShutdownAsync()
     {
-        Console.WriteLine("[CommandPlugin] Shutting down");
+        _context?.Logger.Info("正在关闭");
         _commands.Clear();
         return Task.CompletedTask;
     }
 
     public async Task HandleMessageAsync(RoomMessageContext context)
     {
-        // Check if message is a command (starts with /)
+        // 检查是否为命令（以 / 开头）
         if (!context.Message.StartsWith("/"))
             return;
 
@@ -45,40 +52,44 @@ public class CommandPlugin : IPluginModule, IRoomMessageHandler
         if (parts.Length == 0)
             return;
 
-        var commandName = parts[0].Substring(1).ToLower(); // Remove the '/' prefix
+        var commandName = parts[0][1..].ToLower(); // 移除 '/' 前缀
         var args = parts.Skip(1).ToArray();
 
         if (_commands.TryGetValue(commandName, out var handler))
         {
             try
             {
+                _context?.Logger.Debug($"用户 {context.User.Name} 执行命令: {commandName}");
                 await handler(context.Room, context.User, args);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[CommandPlugin] Error executing command '{commandName}': {ex.Message}");
-                await context.Room.SendAsync(new Core.ChatMessage(-1, $"Error: {ex.Message}"));
+                _context?.Logger.Error(ex, $"执行命令 '{commandName}' 时出错");
+                await _context!.API.SendRoomMessageAsync(context.Room, $"❌ 错误: {ex.Message}");
             }
         }
     }
 
-    private void RegisterCommand(string name, Func<Room, User, string[], Task> handler)
+    private void RegisterCommand(string name, CommandHandler handler, string description)
     {
         _commands[name.ToLower()] = handler;
     }
 
+    /// <summary>
+    /// 处理 /kick 命令
+    /// </summary>
     private async Task HandleKickCommand(Room room, User user, string[] args)
     {
-        // Only host can kick
+        // 仅房主可以踢人
         if (!room.IsHost(user))
         {
-            await room.SendAsync(new Core.ChatMessage(-1, "Only the host can use the /kick command"));
+            await _context!.API.SendRoomMessageAsync(room, "❌ 只有房主可以使用 /kick 命令");
             return;
         }
 
         if (args.Length == 0)
         {
-            await room.SendAsync(new Core.ChatMessage(-1, "Usage: /kick <username>"));
+            await _context!.API.SendRoomMessageAsync(room, "💡 用法: /kick <用户名>");
             return;
         }
 
@@ -88,48 +99,96 @@ public class CommandPlugin : IPluginModule, IRoomMessageHandler
 
         if (targetUser == null)
         {
-            await room.SendAsync(new Core.ChatMessage(-1, $"User '{targetUsername}' not found in room"));
+            await _context!.API.SendRoomMessageAsync(room, $"❌ 用户 '{targetUsername}' 不在房间内");
             return;
         }
 
         if (room.IsHost(targetUser))
         {
-            await room.SendAsync(new Core.ChatMessage(-1, "Cannot kick the host"));
+            await _context!.API.SendRoomMessageAsync(room, "❌ 不能踢出房主");
             return;
         }
 
-        Console.WriteLine($"[CommandPlugin] User {user.Name} kicked {targetUser.Name} from room {room.Id}");
+        _context!.Logger.Info($"用户 {user.Name} 踢出了 {targetUser.Name}");
         
-        // Notify room
-        await room.SendAsync(new Core.ChatMessage(-1, $"[System] {targetUser.Name} has been kicked from the room"));
+        // 通知房间
+        await _context.API.SendRoomMessageAsync(room, $"👢 {targetUser.Name} 被踢出了房间");
         
-        // Kick the user by closing their session
-        if (targetUser.SessionRef != null && targetUser.SessionRef.TryGetTarget(out var session))
-        {
-            await room.SendAsync(new Core.ChatMessage(-1, "You have been kicked from the room"));
-            await Task.Delay(100);
-            session.Dispose();
-        }
+        // 踢出用户
+        await _context.API.RemoveUserFromRoomAsync(targetUser, "你已被房主踢出房间");
     }
 
+    /// <summary>
+    /// 处理 /help 命令
+    /// </summary>
     private async Task HandleHelpCommand(Room room, User user, string[] args)
     {
-        var helpText = "[Command Plugin Help]\n" +
-                       "/kick <username> - Kick a user from the room (host only)\n" +
-                       "/help - Show this help message\n" +
-                       "/info - Show plugin information";
+        var helpText = 
+            "📖 命令插件帮助\n" +
+            "━━━━━━━━━━━━━━━━\n" +
+            "/kick <用户名> - 踢出用户（仅房主）\n" +
+            "/list - 列出房间内所有玩家\n" +
+            "/lock - 锁定/解锁房间（仅房主）\n" +
+            "/help - 显示此帮助信息\n" +
+            "/info - 显示插件信息";
         
-        await room.SendAsync(new Core.ChatMessage(-1, helpText));
+        await _context!.API.SendRoomMessageAsync(room, helpText);
     }
 
+    /// <summary>
+    /// 处理 /info 命令
+    /// </summary>
     private async Task HandleInfoCommand(Room room, User user, string[] args)
     {
-        var info = "[CommandPlugin]\n" +
-                   "Version: 2.0 (MEF-based)\n" +
-                   "No SDK required - uses MEF for discovery\n" +
-                   $"Registered commands: {_commands.Count}\n" +
-                   $"Plugin directory: {_context?.PluginDirectory ?? "N/A"}";
+        var info = 
+            "ℹ️ 命令插件信息\n" +
+            "━━━━━━━━━━━━━━━━\n" +
+            "版本: 3.0 (基于 MEF + PluginAPI)\n" +
+            $"已注册命令: {_commands.Count} 个\n" +
+            $"插件目录: {_context?.PluginDirectory ?? "N/A"}\n" +
+            $"当前在线: {_context?.API.GetOnlineUserCount() ?? 0} 人\n" +
+            $"活跃房间: {_context?.API.GetActiveRoomCount() ?? 0} 个";
         
-        await room.SendAsync(new Core.ChatMessage(-1, info));
+        await _context!.API.SendRoomMessageAsync(room, info);
+    }
+
+    /// <summary>
+    /// 处理 /list 命令
+    /// </summary>
+    private async Task HandleListCommand(Room room, User user, string[] args)
+    {
+        var users = room.GetAllUsers().ToList();
+        var userList = string.Join("\n", users.Select((u, i) => 
+            $"{i + 1}. {u.Name}{(room.IsHost(u) ? " 👑" : "")}{(u.IsMonitor ? " 👁️" : "")}"));
+        
+        var message = 
+            $"👥 房间玩家列表 ({users.Count} 人)\n" +
+            "━━━━━━━━━━━━━━━━\n" +
+            userList;
+        
+        await _context!.API.SendRoomMessageAsync(room, message);
+    }
+
+    /// <summary>
+    /// 处理 /lock 命令
+    /// </summary>
+    private async Task HandleLockCommand(Room room, User user, string[] args)
+    {
+        // 仅房主可以锁定房间
+        if (!room.IsHost(user))
+        {
+            await _context!.API.SendRoomMessageAsync(room, "❌ 只有房主可以锁定/解锁房间");
+            return;
+        }
+
+        bool newLockState = !room.Locked;
+        await _context!.API.SetRoomLockAsync(room, newLockState);
+        
+        var message = newLockState 
+            ? "🔒 房间已锁定" 
+            : "🔓 房间已解锁";
+        
+        await _context.API.SendRoomMessageAsync(room, message);
+        _context.Logger.Info($"用户 {user.Name} {(newLockState ? "锁定" : "解锁")}了房间 {room.Id}");
     }
 }
