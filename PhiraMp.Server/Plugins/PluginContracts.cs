@@ -4,25 +4,25 @@ using PhiraMp.Server.Models;
 namespace PhiraMp.Server.Plugins;
 
 /// <summary>
-/// Optional marker interface for plugins. Plugins don't need to implement this.
-/// Use [Export(typeof(IPluginModule))] to be discovered by MEF.
+/// 插件模块接口（可选）- 插件不一定需要实现此接口
+/// 使用 [Export(typeof(IPluginModule))] 让 MEF 发现插件
 /// </summary>
 public interface IPluginModule
 {
     /// <summary>
-    /// Called when plugin is loaded. Optional - implement if needed.
+    /// 插件加载时调用（可选 - 需要时实现）
     /// </summary>
     Task InitializeAsync(PluginContext context);
     
     /// <summary>
-    /// Called when plugin is unloaded. Optional - implement if needed.
+    /// 插件卸载时调用（可选 - 需要时实现）
     /// </summary>
     Task ShutdownAsync();
 }
 
 /// <summary>
-/// Interface for room message handlers. Export this to handle room messages.
-/// Use [Export(typeof(IRoomMessageHandler))] to register.
+/// 房间消息处理器接口 - 导出此接口以处理房间消息
+/// 使用 [Export(typeof(IRoomMessageHandler))] 注册
 /// </summary>
 public interface IRoomMessageHandler
 {
@@ -30,8 +30,8 @@ public interface IRoomMessageHandler
 }
 
 /// <summary>
-/// Interface for room state change handlers. Export this to handle state changes.
-/// Use [Export(typeof(IRoomStateHandler))] to register.
+/// 房间状态变化处理器接口 - 导出此接口以处理状态变化
+/// 使用 [Export(typeof(IRoomStateHandler))] 注册
 /// </summary>
 public interface IRoomStateHandler
 {
@@ -39,8 +39,8 @@ public interface IRoomStateHandler
 }
 
 /// <summary>
-/// Interface for user join handlers. Export this to handle user joins.
-/// Use [Export(typeof(IUserJoinHandler))] to register.
+/// 用户加入处理器接口 - 导出此接口以处理用户加入
+/// 使用 [Export(typeof(IUserJoinHandler))] 注册
 /// </summary>
 public interface IUserJoinHandler
 {
@@ -48,8 +48,8 @@ public interface IUserJoinHandler
 }
 
 /// <summary>
-/// Interface for user leave handlers. Export this to handle user leaves.
-/// Use [Export(typeof(IUserLeaveHandler))] to register.
+/// 用户离开处理器接口 - 导出此接口以处理用户离开
+/// 使用 [Export(typeof(IUserLeaveHandler))] 注册
 /// </summary>
 public interface IUserLeaveHandler
 {
@@ -57,9 +57,9 @@ public interface IUserLeaveHandler
 }
 
 /// <summary>
-/// Interface for request start handlers. Export this to validate/modify start requests.
-/// Use [Export(typeof(IRequestStartHandler))] to register.
-/// Plugins can throw exceptions to prevent game start.
+/// 请求开始游戏处理器接口 - 导出此接口以验证/修改开始请求
+/// 使用 [Export(typeof(IRequestStartHandler))] 注册
+/// 插件可以抛出异常来阻止游戏开始
 /// </summary>
 public interface IRequestStartHandler
 {
@@ -67,8 +67,8 @@ public interface IRequestStartHandler
 }
 
 /// <summary>
-/// Interface for select chart handlers. Export this to handle chart selection.
-/// Use [Export(typeof(ISelectChartHandler))] to register.
+/// 选歌处理器接口 - 导出此接口以处理选歌
+/// 使用 [Export(typeof(ISelectChartHandler))] 注册
 /// </summary>
 public interface ISelectChartHandler
 {
@@ -76,8 +76,8 @@ public interface ISelectChartHandler
 }
 
 /// <summary>
-/// Interface for cycle mode change handlers. Export this to handle cycle mode changes.
-/// Use [Export(typeof(ICycleModeChangeHandler))] to register.
+/// 循环模式变化处理器接口 - 导出此接口以处理循环模式变化
+/// 使用 [Export(typeof(ICycleModeChangeHandler))] 注册
 /// </summary>
 public interface ICycleModeChangeHandler
 {
@@ -85,31 +85,76 @@ public interface ICycleModeChangeHandler
 }
 
 /// <summary>
-/// Context provided to plugins during initialization
+/// 插件上下文 - 在插件初始化时提供
 /// </summary>
 public class PluginContext
 {
+    /// <summary>
+    /// 服务器状态（直接访问，高级功能）
+    /// </summary>
     public ServerState ServerState { get; }
+    
+    /// <summary>
+    /// 插件目录路径
+    /// </summary>
     public string PluginDirectory { get; }
+    
+    /// <summary>
+    /// 配置文件目录路径
+    /// </summary>
     public string ConfigDirectory { get; }
+    
+    /// <summary>
+    /// 数据文件目录路径
+    /// </summary>
     public string DataDirectory { get; }
     
-    public PluginContext(ServerState serverState, string pluginDir, string configDir, string dataDir)
+    /// <summary>
+    /// 插件 API - 推荐使用此接口操作服务器
+    /// </summary>
+    public IPluginAPI API { get; }
+    
+    /// <summary>
+    /// 插件日志记录器
+    /// </summary>
+    public IPluginLogger Logger { get; }
+    
+    /// <summary>
+    /// 插件配置管理器
+    /// </summary>
+    public IPluginConfig Config { get; }
+    
+    public PluginContext(
+        ServerState serverState, 
+        string pluginDir, 
+        string configDir, 
+        string dataDir,
+        IPluginAPI api,
+        IPluginLogger logger,
+        IPluginConfig config)
     {
         ServerState = serverState;
         PluginDirectory = pluginDir;
         ConfigDirectory = configDir;
         DataDirectory = dataDir;
+        API = api;
+        Logger = logger;
+        Config = config;
     }
 }
 
 /// <summary>
-/// Context for room message events
+/// 房间消息事件上下文
 /// </summary>
 public class RoomMessageContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>发送消息的用户</summary>
     public User User { get; }
+    
+    /// <summary>消息内容</summary>
     public string Message { get; }
     
     public RoomMessageContext(Room room, User user, string message)
@@ -121,11 +166,14 @@ public class RoomMessageContext
 }
 
 /// <summary>
-/// Context for room state change events
+/// 房间状态变化事件上下文
 /// </summary>
 public class RoomStateContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>新状态</summary>
     public string NewState { get; }
     
     public RoomStateContext(Room room, string newState)
@@ -136,11 +184,14 @@ public class RoomStateContext
 }
 
 /// <summary>
-/// Context for user join/leave events
+/// 用户加入/离开事件上下文
 /// </summary>
 public class UserEventContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>用户对象</summary>
     public User User { get; }
     
     public UserEventContext(Room room, User user)
@@ -151,11 +202,14 @@ public class UserEventContext
 }
 
 /// <summary>
-/// Context for request start events
+/// 请求开始游戏事件上下文
 /// </summary>
 public class RequestStartContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>发起请求的用户</summary>
     public User User { get; }
     
     public RequestStartContext(Room room, User user)
@@ -166,12 +220,17 @@ public class RequestStartContext
 }
 
 /// <summary>
-/// Context for select chart events
+/// 选歌事件上下文
 /// </summary>
 public class SelectChartContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>选歌的用户</summary>
     public User User { get; }
+    
+    /// <summary>选择的谱面信息</summary>
     public ChartInfo Chart { get; }
     
     public SelectChartContext(Room room, User user, ChartInfo chart)
@@ -183,12 +242,17 @@ public class SelectChartContext
 }
 
 /// <summary>
-/// Context for cycle mode change events
+/// 循环模式变化事件上下文
 /// </summary>
 public class CycleModeChangeContext
 {
+    /// <summary>房间对象</summary>
     public Room Room { get; }
+    
+    /// <summary>操作的用户</summary>
     public User User { get; }
+    
+    /// <summary>是否启用循环模式</summary>
     public bool CycleEnabled { get; }
     
     public CycleModeChangeContext(Room room, User user, bool cycleEnabled)

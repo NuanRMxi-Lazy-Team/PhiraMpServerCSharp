@@ -6,7 +6,7 @@ using PhiraMp.Server.Models;
 namespace PhiraMp.Server.Plugins;
 
 /// <summary>
-/// MEF-based plugin manager - discovers and manages plugins without requiring specific base classes
+/// 基于 MEF 的插件管理器 - 无需特定基类即可发现和管理插件
 /// </summary>
 public class PluginManager : IDisposable
 {
@@ -50,172 +50,215 @@ public class PluginManager : IDisposable
         _configDirectory = Path.Combine(_pluginDirectory, "configs");
         _dataDirectory = Path.Combine(_pluginDirectory, "data");
 
+        // 创建必要的目录
         Directory.CreateDirectory(_pluginDirectory);
         Directory.CreateDirectory(_configDirectory);
         Directory.CreateDirectory(_dataDirectory);
     }
 
     /// <summary>
-    /// Load all plugins using MEF discovery
+    /// 加载所有插件（使用 MEF 发现）
     /// </summary>
     public async Task LoadAllPluginsAsync()
     {
-        Logger.Info($"Loading plugins from {_pluginDirectory}");
+        Logger.Info($"从 {_pluginDirectory} 加载插件");
 
         try
         {
-            // Create MEF catalog from plugin directory
+            // 创建 MEF 目录
             var catalog = new AggregateCatalog();
             
             var dllFiles = Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
             foreach (var dllFile in dllFiles)
             {
-                try
-                {
-                    // Use DirectoryCatalog for each DLL
-                    var assembly = Assembly.LoadFrom(dllFile);
-                    var assemblyCatalog = new AssemblyCatalog(assembly);
-                    catalog.Catalogs.Add(assemblyCatalog);
-                    
-                    _loadedPlugins[Path.GetFileName(dllFile)] = new PluginLoadInfo
-                    {
-                        Path = dllFile,
-                        Assembly = assembly,
-                        LoadTime = DateTime.UtcNow
-                    };
-                    
-                    Logger.Info($"Cataloged plugin: {Path.GetFileName(dllFile)}");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, $"Failed to catalog {dllFile}:");
-                }
+                if (!AddPluginToCatalog(dllFile, catalog))
+                    continue;
             }
 
-            // Create composition container
+            // 创建组合容器
             _container = new CompositionContainer(catalog);
             
-            // Compose this instance to get all imports
+            // 组合此实例以获取所有导入
             _container.SatisfyImportsOnce(this);
 
-            // Initialize all plugin modules
+            // 初始化所有插件模块
+            await InitializePluginModulesAsync();
+
+            // 打印加载信息
+            LogPluginLoadSummary();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "加载插件时发生错误:");
+        }
+
+        // 启用热重载
+        EnableHotReload();
+    }
+
+    /// <summary>
+    /// 将插件添加到目录中
+    /// </summary>
+    private bool AddPluginToCatalog(string dllFile, AggregateCatalog catalog)
+    {
+        try
+        {
+            var assembly = Assembly.LoadFrom(dllFile);
+            var assemblyCatalog = new AssemblyCatalog(assembly);
+            catalog.Catalogs.Add(assemblyCatalog);
+            
+            _loadedPlugins[Path.GetFileName(dllFile)] = new PluginLoadInfo
+            {
+                Path = dllFile,
+                Assembly = assembly,
+                LoadTime = DateTime.UtcNow
+            };
+            
+            Logger.Info($"已编目插件: {Path.GetFileName(dllFile)}");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, $"编目插件失败 {dllFile}:");
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// 初始化所有插件模块
+    /// </summary>
+    private async Task InitializePluginModulesAsync()
+    {
+        if (PluginModules == null) return;
+
+        foreach (var module in PluginModules)
+        {
+            try
+            {
+                var pluginName = module.GetType().Name;
+                var logger = new PluginLogger(pluginName);
+                var config = new PluginConfig(_configDirectory, logger);
+                var api = new PluginAPI(_serverState, logger);
+                
+                var context = new PluginContext(
+                    _serverState, 
+                    _pluginDirectory, 
+                    _configDirectory, 
+                    _dataDirectory,
+                    api,
+                    logger,
+                    config);
+                
+                await module.InitializeAsync(context);
+                Logger.Info($"已初始化插件模块: {pluginName}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"初始化插件失败 {module.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 打印插件加载摘要
+    /// </summary>
+    private void LogPluginLoadSummary()
+    {
+        Logger.Info($"使用 MEF 加载了 {_loadedPlugins.Count} 个插件");
+        Logger.Info($"  - {PluginModules?.Count() ?? 0} 个模块");
+        Logger.Info($"  - {MessageHandlers?.Count() ?? 0} 个消息处理器");
+        Logger.Info($"  - {StateHandlers?.Count() ?? 0} 个状态处理器");
+        Logger.Info($"  - {UserJoinHandlers?.Count() ?? 0} 个用户加入处理器");
+        Logger.Info($"  - {UserLeaveHandlers?.Count() ?? 0} 个用户离开处理器");
+        Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} 个游戏开始处理器");
+        Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} 个选歌处理器");
+        Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} 个循环模式处理器");
+    }
+
+    /// <summary>
+    /// 启用插件热重载
+    /// </summary>
+    private void EnableHotReload()
+    {
+        try
+        {
+            _watcher = new FileSystemWatcher(_pluginDirectory)
+            {
+                Filter = "*.dll",
+                NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName
+            };
+
+            _watcher.Changed += OnPluginFileChanged;
+            _watcher.Created += OnPluginFileChanged;
+            _watcher.Deleted += OnPluginFileChanged;
+            _watcher.EnableRaisingEvents = true;
+
+            Logger.Info("已启用插件热重载");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "启用热重载失败:");
+        }
+    }
+
+    /// <summary>
+    /// 插件文件变化事件处理
+    /// </summary>
+    private void OnPluginFileChanged(object sender, FileSystemEventArgs e)
+    {
+        Logger.Info($"检测到插件变化: {e.Name} ({e.ChangeType})");
+        
+        // 延迟重新加载以确保文件写入完成
+        Task.Run(async () =>
+        {
+            await Task.Delay(1000);
+            Logger.Info("正在重新加载插件...");
+            await ReloadPluginsAsync();
+        });
+    }
+
+    /// <summary>
+    /// 重新加载所有插件
+    /// </summary>
+    public async Task ReloadPluginsAsync()
+    {
+        try
+        {
+            // 关闭所有现有插件
             if (PluginModules != null)
             {
-                var context = new PluginContext(_serverState, _pluginDirectory, _configDirectory, _dataDirectory);
                 foreach (var module in PluginModules)
                 {
                     try
                     {
-                        await module.InitializeAsync(context);
-                        Logger.Info($"Initialized plugin module: {module.GetType().Name}");
+                        await module.ShutdownAsync();
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, $"Failed to initialize plugin {module.GetType().Name}:");
+                        Logger.Error(ex, $"关闭插件失败 {module.GetType().Name}:");
                     }
                 }
             }
 
-            Logger.Info($"Loaded {_loadedPlugins.Count} plugins with MEF");
-            Logger.Info($"  - {PluginModules?.Count() ?? 0} modules");
-            Logger.Info($"  - {MessageHandlers?.Count() ?? 0} message handlers");
-            Logger.Info($"  - {StateHandlers?.Count() ?? 0} state handlers");
-            Logger.Info($"  - {UserJoinHandlers?.Count() ?? 0} user join handlers");
-            Logger.Info($"  - {UserLeaveHandlers?.Count() ?? 0} user leave handlers");
-            Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} request start handlers");
-            Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} select chart handlers");
-            Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} cycle mode change handlers");
+            // 清理容器
+            _container?.Dispose();
+            _loadedPlugins.Clear();
+
+            // 重新加载
+            await LoadAllPluginsAsync();
+            
+            Logger.Info("插件重新加载完成");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to load plugins:");
+            Logger.Error(ex, "重新加载插件时发生错误:");
         }
     }
 
-    /// <summary>
-    /// Reload all plugins
-    /// </summary>
-    public async Task ReloadAllPluginsAsync()
-    {
-        Logger.Info("Reloading all plugins...");
-        
-        // Shutdown current plugins
-        if (PluginModules != null)
-        {
-            foreach (var module in PluginModules)
-            {
-                try
-                {
-                    await module.ShutdownAsync();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, $"Error shutting down plugin {module.GetType().Name}:");
-                }
-            }
-        }
-
-        // Dispose current container
-        _container?.Dispose();
-        _container = null;
-        
-        // Clear plugin info
-        _loadedPlugins.Clear();
-        
-        // Small delay to ensure files are released
-        await Task.Delay(500);
-        
-        // GC to help unload assemblies
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-
-        // Reload
-        await LoadAllPluginsAsync();
-    }
+    // ===== 事件分发方法 =====
 
     /// <summary>
-    /// Enable hot reload monitoring
-    /// </summary>
-    public void EnableHotReload()
-    {
-        if (_watcher != null)
-            return;
-
-        _watcher = new FileSystemWatcher(_pluginDirectory, "*.dll")
-        {
-            NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName,
-            EnableRaisingEvents = true
-        };
-
-        _watcher.Changed += OnPluginFileChanged;
-        _watcher.Created += OnPluginFileCreated;
-
-        Logger.Info("Hot reload enabled for plugins");
-    }
-
-    private void OnPluginFileChanged(object sender, FileSystemEventArgs e)
-    {
-        Logger.Info($"Plugin file changed: {Path.GetFileName(e.FullPath)}");
-        Task.Run(async () =>
-        {
-            await Task.Delay(1000); // Debounce
-            await ReloadAllPluginsAsync();
-        });
-    }
-
-    private void OnPluginFileCreated(object sender, FileSystemEventArgs e)
-    {
-        Logger.Info($"Plugin file created: {Path.GetFileName(e.FullPath)}");
-        Task.Run(async () =>
-        {
-            await Task.Delay(1000); // Debounce
-            await ReloadAllPluginsAsync();
-        });
-    }
-
-    /// <summary>
-    /// Dispatch room message to all handlers
+    /// 分发房间消息到所有处理器
     /// </summary>
     public async Task DispatchRoomMessageAsync(Room room, User user, string message)
     {
@@ -230,13 +273,13 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in message handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"消息处理器错误 {handler.GetType().Name}:");
             }
         }
     }
 
     /// <summary>
-    /// Dispatch room state change to all handlers
+    /// 分发房间状态变化到所有处理器
     /// </summary>
     public async Task DispatchRoomStateChangeAsync(Room room, string newState)
     {
@@ -251,13 +294,13 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in state handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"状态处理器错误 {handler.GetType().Name}:");
             }
         }
     }
 
     /// <summary>
-    /// Dispatch user join to all handlers
+    /// 分发用户加入到所有处理器
     /// </summary>
     public async Task DispatchUserJoinAsync(Room room, User user)
     {
@@ -272,13 +315,13 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in user join handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"用户加入处理器错误 {handler.GetType().Name}:");
             }
         }
     }
 
     /// <summary>
-    /// Dispatch user leave to all handlers
+    /// 分发用户离开到所有处理器
     /// </summary>
     public async Task DispatchUserLeaveAsync(Room room, User user)
     {
@@ -293,13 +336,13 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in user leave handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"用户离开处理器错误 {handler.GetType().Name}:");
             }
         }
     }
 
     /// <summary>
-    /// Dispatch request start to all handlers - plugins can throw exceptions to prevent start
+    /// 分发游戏开始请求到所有处理器 - 插件可以抛出异常来阻止开始
     /// </summary>
     public async Task DispatchRequestStartAsync(Room room, User user)
     {
@@ -314,14 +357,14 @@ public class PluginManager : IDisposable
             }
             catch
             {
-                // Re-throw exceptions from plugins to allow them to prevent start
+                // 重新抛出异常以允许插件阻止游戏开始
                 throw;
             }
         }
     }
 
     /// <summary>
-    /// Dispatch select chart to all handlers
+    /// 分发选歌到所有处理器
     /// </summary>
     public async Task DispatchSelectChartAsync(Room room, User user, ChartInfo chart)
     {
@@ -336,13 +379,13 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in select chart handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"选歌处理器错误 {handler.GetType().Name}:");
             }
         }
     }
 
     /// <summary>
-    /// Dispatch cycle mode change to all handlers
+    /// 分发循环模式变化到所有处理器
     /// </summary>
     public async Task DispatchCycleModeChangeAsync(Room room, User user, bool cycleEnabled)
     {
@@ -357,7 +400,7 @@ public class PluginManager : IDisposable
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, $"Error in cycle mode change handler {handler.GetType().Name}:");
+                Logger.Error(ex, $"循环模式处理器错误 {handler.GetType().Name}:");
             }
         }
     }
@@ -370,7 +413,7 @@ public class PluginManager : IDisposable
 
         _watcher?.Dispose();
 
-        // Shutdown all plugins
+        // 关闭所有插件
         if (PluginModules != null)
         {
             foreach (var module in PluginModules)
@@ -381,7 +424,7 @@ public class PluginManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error(ex, $"Error shutting down plugin {module.GetType().Name}:");
+                    Logger.Error(ex, $"关闭插件错误 {module.GetType().Name}:");
                 }
             }
         }
@@ -392,11 +435,16 @@ public class PluginManager : IDisposable
 }
 
 /// <summary>
-/// Information about a loaded plugin
+/// 插件加载信息
 /// </summary>
-internal class PluginLoadInfo
+public class PluginLoadInfo
 {
-    public string Path { get; set; } = "";
-    public Assembly? Assembly { get; set; }
-    public DateTime LoadTime { get; set; }
+    /// <summary>插件文件路径</summary>
+    public required string Path { get; init; }
+    
+    /// <summary>插件程序集</summary>
+    public required Assembly Assembly { get; init; }
+    
+    /// <summary>加载时间</summary>
+    public DateTime LoadTime { get; init; }
 }

@@ -41,9 +41,8 @@ public class PhiraMpServer : IDisposable
 
     public async Task StartAsync()
     {
-        // Load plugins before starting server
+        // 加载插件（包含热重载功能）
         await _state.PluginManager!.LoadAllPluginsAsync();
-        _state.PluginManager.EnableHotReload();
 
         _listener.Start();
         Logger.Info($"Server listening on port {((IPEndPoint)_listener.LocalEndpoint).Port}");
