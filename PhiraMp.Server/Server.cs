@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Threading.Channels;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
+using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Server;
 
@@ -53,11 +54,14 @@ public class ServerState
     public ConcurrentDictionary<int, User> Users { get; } = new();
     public ConcurrentDictionary<string, Room> Rooms { get; } = new();
     public Channel<Guid> LostConnectionChannel { get; }
+    public ServerAPIImpl ServerAPI { get; }
+    public PluginManager? PluginManager { get; set; }
 
     public ServerState(ServerConfig config)
     {
         Config = config;
         LostConnectionChannel = Channel.CreateUnbounded<Guid>();
+        ServerAPI = new ServerAPIImpl(this);
     }
 
     public async Task LostConnectionAsync(Guid sessionId)
@@ -81,6 +85,9 @@ public class PhiraMpServer : IDisposable
         config ??= ServerConfig.Load();
         _state = new ServerState(config);
 
+        // Initialize plugin manager
+        _state.PluginManager = new PluginManager(_state.ServerAPI);
+
         var bindAddress = IPAddress.Parse(config.BindIp);
         _listener = new TcpListener(bindAddress, config.Port);
         
@@ -95,6 +102,10 @@ public class PhiraMpServer : IDisposable
 
     public async Task StartAsync()
     {
+        // Load plugins before starting server
+        await _state.PluginManager!.LoadAllPluginsAsync();
+        _state.PluginManager.EnableHotReload();
+
         _listener.Start();
         Logger.Info($"Server listening on port {((IPEndPoint)_listener.LocalEndpoint).Port}");
 
@@ -184,6 +195,9 @@ public class PhiraMpServer : IDisposable
         _disposed = true;
         GC.SuppressFinalize(this);
         Stop();
+
+        // Dispose plugin manager
+        _state.PluginManager?.Dispose();
 
         foreach (var session in _state.Sessions.Values)
         {

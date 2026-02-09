@@ -19,13 +19,15 @@ public class Room
     private readonly List<User> _monitors = new();
     private readonly object _lock = new();
     private readonly int _maxUsers;
+    private readonly ServerState? _serverState;
 
-    public Room(RoomId id, User host, int maxUsers = 8, bool cycleVotingMode = false)
+    public Room(RoomId id, User host, int maxUsers = 8, bool cycleVotingMode = false, ServerState? serverState = null)
     {
         Id = id;
         Host = host;
         _maxUsers = maxUsers;
         CycleVotingMode = cycleVotingMode;
+        _serverState = serverState;
         _users.Add(host);
     }
 
@@ -114,6 +116,19 @@ public class Room
     public async Task OnStateChangeAsync()
     {
         await BroadcastAsync(new ChangeStateCommand(GetClientRoomState()));
+        
+        // Notify plugins of state change
+        if (_serverState?.ServerAPI != null)
+        {
+            var stateName = State switch
+            {
+                InternalRoomState.SelectChart => "SelectChart",
+                InternalRoomState.WaitForReady => "WaitingForReady",
+                InternalRoomState.Playing => "Playing",
+                _ => "Unknown"
+            };
+            await _serverState.ServerAPI.OnRoomStateChangeAsync(this, stateName);
+        }
     }
 
     public bool AddUser(User user, bool monitor)
@@ -227,6 +242,13 @@ public class Room
     public async Task<bool> OnUserLeaveAsync(User user)
     {
         await SendAsync(new LeaveRoomMessage(user.Id, user.Name));
+        
+        // Notify plugins of user leaving
+        if (_serverState?.ServerAPI != null)
+        {
+            await _serverState.ServerAPI.OnUserLeaveAsync(this, user);
+        }
+        
         user.Room = null;
 
         lock (_lock)

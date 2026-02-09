@@ -277,6 +277,10 @@ public class Session : IDisposable
         try
         {
             var room = User.Room ?? throw new Exception("No room");
+            
+            // Notify plugins before sending message
+            await Server.ServerAPI.OnRoomMessageAsync(room, User, cmd.Message.Value);
+            
             await room.SendAsAsync(User, cmd.Message.Value);
             return new ChatResponseCommand(true);
         }
@@ -325,7 +329,7 @@ public class Session : IDisposable
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server.Config.CycleVotingMode);
+            var room = new Room(cmd.Id, User, Server.Config.RoomMaxPlayers, Server.Config.CycleVotingMode, Server);
             if (!Server.Rooms.TryAdd(cmd.Id.Value, room))
             {
                 throw new Exception("Room ID already occupied");
@@ -380,6 +384,9 @@ public class Session : IDisposable
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
             await room.SendAsync(new JoinRoomMessage(User.Id, User.Name));
             User.Room = room;
+
+            // Notify plugins of user joining
+            await Server.ServerAPI.OnUserJoinAsync(room, User);
 
             var response = new JoinRoomResponse(
                 room.GetClientRoomState(),
