@@ -1,6 +1,7 @@
 using System.ComponentModel.Composition;
 using System.ComponentModel.Composition.Hosting;
 using System.Reflection;
+using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server.Plugins;
 
@@ -32,6 +33,15 @@ public class PluginManager : IDisposable
 
     [ImportMany(typeof(IUserLeaveHandler))]
     public IEnumerable<IUserLeaveHandler>? UserLeaveHandlers { get; set; }
+
+    [ImportMany(typeof(IRequestStartHandler))]
+    public IEnumerable<IRequestStartHandler>? RequestStartHandlers { get; set; }
+
+    [ImportMany(typeof(ISelectChartHandler))]
+    public IEnumerable<ISelectChartHandler>? SelectChartHandlers { get; set; }
+
+    [ImportMany(typeof(ICycleModeChangeHandler))]
+    public IEnumerable<ICycleModeChangeHandler>? CycleModeChangeHandlers { get; set; }
 
     public PluginManager(ServerState serverState, string pluginDirectory = "plugins")
     {
@@ -112,6 +122,9 @@ public class PluginManager : IDisposable
             Logger.Info($"  - {StateHandlers?.Count() ?? 0} state handlers");
             Logger.Info($"  - {UserJoinHandlers?.Count() ?? 0} user join handlers");
             Logger.Info($"  - {UserLeaveHandlers?.Count() ?? 0} user leave handlers");
+            Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} request start handlers");
+            Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} select chart handlers");
+            Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} cycle mode change handlers");
         }
         catch (Exception ex)
         {
@@ -281,6 +294,70 @@ public class PluginManager : IDisposable
             catch (Exception ex)
             {
                 Logger.Error(ex, $"Error in user leave handler {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch request start to all handlers - plugins can throw exceptions to prevent start
+    /// </summary>
+    public async Task DispatchRequestStartAsync(Room room, User user)
+    {
+        if (RequestStartHandlers == null) return;
+
+        var context = new RequestStartContext(room, user);
+        foreach (var handler in RequestStartHandlers)
+        {
+            try
+            {
+                await handler.HandleRequestStartAsync(context);
+            }
+            catch
+            {
+                // Re-throw exceptions from plugins to allow them to prevent start
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch select chart to all handlers
+    /// </summary>
+    public async Task DispatchSelectChartAsync(Room room, User user, ChartInfo chart)
+    {
+        if (SelectChartHandlers == null) return;
+
+        var context = new SelectChartContext(room, user, chart);
+        foreach (var handler in SelectChartHandlers)
+        {
+            try
+            {
+                await handler.HandleSelectChartAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in select chart handler {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch cycle mode change to all handlers
+    /// </summary>
+    public async Task DispatchCycleModeChangeAsync(Room room, User user, bool cycleEnabled)
+    {
+        if (CycleModeChangeHandlers == null) return;
+
+        var context = new CycleModeChangeContext(room, user, cycleEnabled);
+        foreach (var handler in CycleModeChangeHandlers)
+        {
+            try
+            {
+                await handler.HandleCycleModeChangeAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in cycle mode change handler {handler.GetType().Name}:");
             }
         }
     }

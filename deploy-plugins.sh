@@ -27,6 +27,14 @@ else
     echo "✗ CycleVotingPlugin not found - build the solution first"
 fi
 
+# Copy SinglePlayerPreventionPlugin
+if [ -f "PhiraMp.Plugins.SinglePlayerPrevention/bin/Debug/net10.0/PhiraMp.Plugins.SinglePlayerPrevention.dll" ]; then
+    cp "PhiraMp.Plugins.SinglePlayerPrevention/bin/Debug/net10.0/PhiraMp.Plugins.SinglePlayerPrevention.dll" "$PLUGINS_DIR/"
+    echo "✓ SinglePlayerPreventionPlugin deployed"
+else
+    echo "✗ SinglePlayerPreventionPlugin not found - build the solution first"
+fi
+
 echo ""
 echo "Plugin deployment complete!"
 echo "Plugins directory: $PLUGINS_DIR"

@@ -1,4 +1,5 @@
 using System.ComponentModel.Composition;
+using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server.Plugins;
 
@@ -53,6 +54,34 @@ public interface IUserJoinHandler
 public interface IUserLeaveHandler
 {
     Task HandleUserLeaveAsync(UserEventContext context);
+}
+
+/// <summary>
+/// Interface for request start handlers. Export this to validate/modify start requests.
+/// Use [Export(typeof(IRequestStartHandler))] to register.
+/// Plugins can throw exceptions to prevent game start.
+/// </summary>
+public interface IRequestStartHandler
+{
+    Task HandleRequestStartAsync(RequestStartContext context);
+}
+
+/// <summary>
+/// Interface for select chart handlers. Export this to handle chart selection.
+/// Use [Export(typeof(ISelectChartHandler))] to register.
+/// </summary>
+public interface ISelectChartHandler
+{
+    Task HandleSelectChartAsync(SelectChartContext context);
+}
+
+/// <summary>
+/// Interface for cycle mode change handlers. Export this to handle cycle mode changes.
+/// Use [Export(typeof(ICycleModeChangeHandler))] to register.
+/// </summary>
+public interface ICycleModeChangeHandler
+{
+    Task HandleCycleModeChangeAsync(CycleModeChangeContext context);
 }
 
 /// <summary>
@@ -120,3 +149,53 @@ public class UserEventContext
         User = user;
     }
 }
+
+/// <summary>
+/// Context for request start events
+/// </summary>
+public class RequestStartContext
+{
+    public Room Room { get; }
+    public User User { get; }
+    
+    public RequestStartContext(Room room, User user)
+    {
+        Room = room;
+        User = user;
+    }
+}
+
+/// <summary>
+/// Context for select chart events
+/// </summary>
+public class SelectChartContext
+{
+    public Room Room { get; }
+    public User User { get; }
+    public ChartInfo Chart { get; }
+    
+    public SelectChartContext(Room room, User user, ChartInfo chart)
+    {
+        Room = room;
+        User = user;
+        Chart = chart;
+    }
+}
+
+/// <summary>
+/// Context for cycle mode change events
+/// </summary>
+public class CycleModeChangeContext
+{
+    public Room Room { get; }
+    public User User { get; }
+    public bool CycleEnabled { get; }
+    
+    public CycleModeChangeContext(Room room, User user, bool cycleEnabled)
+    {
+        Room = room;
+        User = user;
+        CycleEnabled = cycleEnabled;
+    }
+}
+

@@ -26,6 +26,14 @@ if exist "PhiraMp.Plugins.CycleVoting\bin\Debug\net10.0\PhiraMp.Plugins.CycleVot
     echo [FAIL] CycleVotingPlugin not found - build the solution first
 )
 
+REM Copy SinglePlayerPreventionPlugin
+if exist "PhiraMp.Plugins.SinglePlayerPrevention\bin\Debug\net10.0\PhiraMp.Plugins.SinglePlayerPrevention.dll" (
+    copy /Y "PhiraMp.Plugins.SinglePlayerPrevention\bin\Debug\net10.0\PhiraMp.Plugins.SinglePlayerPrevention.dll" "%PLUGINS_DIR%\"
+    echo [OK] SinglePlayerPreventionPlugin deployed
+) else (
+    echo [FAIL] SinglePlayerPreventionPlugin not found - build the solution first
+)
+
 echo.
 echo Plugin deployment complete!
 echo Plugins directory: %PLUGINS_DIR%

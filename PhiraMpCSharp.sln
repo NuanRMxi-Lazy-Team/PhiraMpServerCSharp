@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugins.CommandPlug
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugins.CycleVoting", "PhiraMp.Plugins.CycleVoting\PhiraMp.Plugins.CycleVoting.csproj", "{406E9119-722F-4868-BB95-C9E8B93C2575}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhiraMp.Plugins.SinglePlayerPrevention", "PhiraMp.Plugins.SinglePlayerPrevention\PhiraMp.Plugins.SinglePlayerPrevention.csproj", "{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -69,6 +71,18 @@ Global
 		{406E9119-722F-4868-BB95-C9E8B93C2575}.Release|x64.Build.0 = Release|Any CPU
 		{406E9119-722F-4868-BB95-C9E8B93C2575}.Release|x86.ActiveCfg = Release|Any CPU
 		{406E9119-722F-4868-BB95-C9E8B93C2575}.Release|x86.Build.0 = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|x64.Build.0 = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Debug|x86.Build.0 = Debug|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|x64.ActiveCfg = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|x64.Build.0 = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|x86.ActiveCfg = Release|Any CPU
+		{44BA3A45-1B8C-4F24-AE33-3F401071DAEB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
