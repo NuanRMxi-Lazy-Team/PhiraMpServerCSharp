@@ -28,11 +28,6 @@ PhiraMpServerCSharp 是一个用 C# 重写的 [phira-mp](https://github.com/team
 - RandomRoom：允许玩家使用特定保留房间号加入随机房间
 - SinglePlayerPrevention：阻止只有一个人的房间开始游戏
 
-### CycleVotingPlugin - 循环投票增强插件
-为循环投票模式提供增强功能，包括自动提示和统计。
-
-**特点：** 多契约导出，直接访问 ServerState
-
 ## 警告？
 - 仓库里有很多没有经过验证的vibecode留下的脚本，自己看看啥内容再运行...
 - 插件理论上把插件dll丢进插件目录就能加载，甚至可以热加载吼
