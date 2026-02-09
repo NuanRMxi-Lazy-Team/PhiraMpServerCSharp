@@ -9,14 +9,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\PhiraMp.Plugin.SDK\PhiraMp.Plugin.SDK.csproj">
+    <PackageReference Include="System.ComponentModel.Composition" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference server contracts directly -->
+    <Reference Include="PhiraMp.Server">
+      <HintPath>..\PhiraMp.Server\bin\Debug\net10.0\PhiraMp.Server.dll</HintPath>
       <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </ProjectReference>
-    <ProjectReference Include="..\PhiraMp.Core\PhiraMp.Core.csproj">
+    </Reference>
+    <Reference Include="PhiraMp.Core">
+      <HintPath>..\PhiraMp.Core\bin\Debug\net10.0\PhiraMp.Core.dll</HintPath>
       <Private>false</Private>
-      <ExcludeAssets>runtime</ExcludeAssets>
-    </ProjectReference>
+    </Reference>
   </ItemGroup>
 
 </Project>

@@ -118,7 +118,7 @@ public class Room
         await BroadcastAsync(new ChangeStateCommand(GetClientRoomState()));
         
         // Notify plugins of state change
-        if (_serverState?.ServerAPI != null)
+        if (_serverState?.PluginManager != null)
         {
             var stateName = State switch
             {
@@ -127,7 +127,7 @@ public class Room
                 InternalRoomState.Playing => "Playing",
                 _ => "Unknown"
             };
-            await _serverState.ServerAPI.OnRoomStateChangeAsync(this, stateName);
+            await _serverState.PluginManager.DispatchRoomStateChangeAsync(this, stateName);
         }
     }
 
@@ -244,9 +244,9 @@ public class Room
         await SendAsync(new LeaveRoomMessage(user.Id, user.Name));
         
         // Notify plugins of user leaving
-        if (_serverState?.ServerAPI != null)
+        if (_serverState?.PluginManager != null)
         {
-            await _serverState.ServerAPI.OnUserLeaveAsync(this, user);
+            await _serverState.PluginManager.DispatchUserLeaveAsync(this, user);
         }
         
         user.Room = null;

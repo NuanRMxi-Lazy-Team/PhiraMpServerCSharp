@@ -1,47 +1,47 @@
-using PhiraMp.Plugin.SDK;
+using System.ComponentModel.Composition;
+using PhiraMp.Server;
+using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Plugins.CommandPlugin;
 
-[Plugin("CommandPlugin", "1.0.0", "PhiraMP Team", "Provides command functionality like /kick")]
-public class CommandPlugin : PluginBase
+/// <summary>
+/// Command plugin using MEF - no forced base class or SDK dependency
+/// Exports both IPluginModule and IRoomMessageHandler
+/// </summary>
+[Export(typeof(IPluginModule))]
+[Export(typeof(IRoomMessageHandler))]
+public class CommandPlugin : IPluginModule, IRoomMessageHandler
 {
-    private readonly Dictionary<string, Func<IRoomContext, IUserContext, string[], Task>> _commands = new();
+    private readonly Dictionary<string, Func<Room, User, string[], Task>> _commands = new();
+    private PluginContext? _context;
 
-    public override string Name => "CommandPlugin";
-    public override string Version => "1.0.0";
-
-    public override async Task OnLoadAsync(IPluginContext context)
+    public async Task InitializeAsync(PluginContext context)
     {
-        await base.OnLoadAsync(context);
-
+        _context = context;
+        
         // Register commands
         RegisterCommand("kick", HandleKickCommand);
         RegisterCommand("help", HandleHelpCommand);
-
-        // Subscribe to room messages
-        context.ServerAPI.SubscribeToRoomMessages(OnRoomMessage);
-
-        Context.Logger.Info("CommandPlugin loaded successfully");
+        RegisterCommand("info", HandleInfoCommand);
+        
+        Console.WriteLine("[CommandPlugin] Initialized with MEF - No SDK required!");
+        await Task.CompletedTask;
     }
 
-    public override Task OnUnloadAsync()
+    public Task ShutdownAsync()
     {
-        Context.Logger.Info("CommandPlugin unloading");
+        Console.WriteLine("[CommandPlugin] Shutting down");
+        _commands.Clear();
         return Task.CompletedTask;
     }
 
-    private void RegisterCommand(string name, Func<IRoomContext, IUserContext, string[], Task> handler)
-    {
-        _commands[name.ToLower()] = handler;
-    }
-
-    private async Task OnRoomMessage(IRoomContext room, IUserContext user, string message)
+    public async Task HandleMessageAsync(RoomMessageContext context)
     {
         // Check if message is a command (starts with /)
-        if (!message.StartsWith("/"))
+        if (!context.Message.StartsWith("/"))
             return;
 
-        var parts = message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = context.Message.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (parts.Length == 0)
             return;
 
@@ -52,62 +52,84 @@ public class CommandPlugin : PluginBase
         {
             try
             {
-                await handler(room, user, args);
+                await handler(context.Room, context.User, args);
             }
             catch (Exception ex)
             {
-                Context.Logger.Error(ex, $"Error executing command '{commandName}':");
-                await room.SendMessageToUserAsync(user, $"Error executing command: {ex.Message}");
+                Console.WriteLine($"[CommandPlugin] Error executing command '{commandName}': {ex.Message}");
+                await context.Room.SendAsync(new Core.ChatMessage(-1, $"Error: {ex.Message}"));
             }
         }
     }
 
-    private async Task HandleKickCommand(IRoomContext room, IUserContext user, string[] args)
+    private void RegisterCommand(string name, Func<Room, User, string[], Task> handler)
+    {
+        _commands[name.ToLower()] = handler;
+    }
+
+    private async Task HandleKickCommand(Room room, User user, string[] args)
     {
         // Only host can kick
-        if (!user.IsHost)
+        if (!room.IsHost(user))
         {
-            await room.SendMessageToUserAsync(user, "Only the host can use the /kick command");
+            await room.SendAsync(new Core.ChatMessage(-1, "Only the host can use the /kick command"));
             return;
         }
 
         if (args.Length == 0)
         {
-            await room.SendMessageToUserAsync(user, "Usage: /kick <username>");
+            await room.SendAsync(new Core.ChatMessage(-1, "Usage: /kick <username>"));
             return;
         }
 
         var targetUsername = string.Join(" ", args);
         var targetUser = room.GetUsers().FirstOrDefault(u => 
-            u.UserName.Equals(targetUsername, StringComparison.OrdinalIgnoreCase));
+            u.Name.Equals(targetUsername, StringComparison.OrdinalIgnoreCase));
 
         if (targetUser == null)
         {
-            await room.SendMessageToUserAsync(user, $"User '{targetUsername}' not found in room");
+            await room.SendAsync(new Core.ChatMessage(-1, $"User '{targetUsername}' not found in room"));
             return;
         }
 
-        if (targetUser.IsHost)
+        if (room.IsHost(targetUser))
         {
-            await room.SendMessageToUserAsync(user, "Cannot kick the host");
+            await room.SendAsync(new Core.ChatMessage(-1, "Cannot kick the host"));
             return;
         }
 
-        Context.Logger.Info($"User {user.UserName} kicked {targetUser.UserName} from room {room.RoomId}");
+        Console.WriteLine($"[CommandPlugin] User {user.Name} kicked {targetUser.Name} from room {room.Id}");
         
         // Notify room
-        await room.SendMessageAsync($"[System] {targetUser.UserName} has been kicked from the room");
+        await room.SendAsync(new Core.ChatMessage(-1, $"[System] {targetUser.Name} has been kicked from the room"));
         
-        // Kick the user
-        await room.KickUserAsync(targetUser);
+        // Kick the user by closing their session
+        if (targetUser.SessionRef != null && targetUser.SessionRef.TryGetTarget(out var session))
+        {
+            await room.SendAsync(new Core.ChatMessage(-1, "You have been kicked from the room"));
+            await Task.Delay(100);
+            session.Dispose();
+        }
     }
 
-    private async Task HandleHelpCommand(IRoomContext room, IUserContext user, string[] args)
+    private async Task HandleHelpCommand(Room room, User user, string[] args)
     {
-        var helpText = "Available commands:\n" +
+        var helpText = "[Command Plugin Help]\n" +
                        "/kick <username> - Kick a user from the room (host only)\n" +
-                       "/help - Show this help message";
+                       "/help - Show this help message\n" +
+                       "/info - Show plugin information";
         
-        await room.SendMessageToUserAsync(user, helpText);
+        await room.SendAsync(new Core.ChatMessage(-1, helpText));
+    }
+
+    private async Task HandleInfoCommand(Room room, User user, string[] args)
+    {
+        var info = "[CommandPlugin]\n" +
+                   "Version: 2.0 (MEF-based)\n" +
+                   "No SDK required - uses MEF for discovery\n" +
+                   $"Registered commands: {_commands.Count}\n" +
+                   $"Plugin directory: {_context?.PluginDirectory ?? "N/A"}";
+        
+        await room.SendAsync(new Core.ChatMessage(-1, info));
     }
 }

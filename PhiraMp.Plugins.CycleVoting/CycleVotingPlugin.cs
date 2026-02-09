@@ -1,55 +1,58 @@
-using PhiraMp.Plugin.SDK;
+using System.ComponentModel.Composition;
+using PhiraMp.Server;
+using PhiraMp.Server.Plugins;
+using PhiraMp.Server.Models;
 
 namespace PhiraMp.Plugins.CycleVoting;
 
-[Plugin("CycleVotingPlugin", "1.0.0", "PhiraMP Team", "Enhances cycle voting mode with statistics and announcements")]
-public class CycleVotingPlugin : PluginBase
+/// <summary>
+/// Cycle voting plugin using MEF - demonstrates flexible plugin architecture
+/// Can export multiple contracts and access server internals directly
+/// </summary>
+[Export(typeof(IPluginModule))]
+[Export(typeof(IRoomStateHandler))]
+[Export(typeof(IRoomMessageHandler))]
+public class CycleVotingPlugin : IPluginModule, IRoomStateHandler, IRoomMessageHandler
 {
     private readonly Dictionary<string, RoomVoteStats> _roomStats = new();
+    private PluginContext? _context;
 
-    public override string Name => "CycleVotingPlugin";
-    public override string Version => "1.0.0";
-
-    public override async Task OnLoadAsync(IPluginContext context)
+    public async Task InitializeAsync(PluginContext context)
     {
-        await base.OnLoadAsync(context);
-
-        // Subscribe to room state changes
-        context.ServerAPI.SubscribeToRoomStateChange(OnRoomStateChange);
-        
-        // Subscribe to room messages for vote announcements
-        context.ServerAPI.SubscribeToRoomMessages(OnRoomMessage);
-
-        Context.Logger.Info("CycleVotingPlugin loaded successfully");
+        _context = context;
+        Console.WriteLine("[CycleVotingPlugin] Initialized with MEF - Maximum flexibility!");
+        Console.WriteLine($"[CycleVotingPlugin] Can access server state directly: {context.ServerState.Rooms.Count} rooms");
+        await Task.CompletedTask;
     }
 
-    public override Task OnUnloadAsync()
+    public Task ShutdownAsync()
     {
-        Context.Logger.Info("CycleVotingPlugin unloading");
+        Console.WriteLine("[CycleVotingPlugin] Shutting down");
         _roomStats.Clear();
         return Task.CompletedTask;
     }
 
-    private async Task OnRoomStateChange(IRoomContext room, string newState)
+    public async Task HandleStateChangeAsync(RoomStateContext context)
     {
-        if (!room.IsCycleVotingMode)
+        if (!context.Room.CycleVotingMode)
             return;
 
         // Initialize stats for room if not exists
-        if (!_roomStats.ContainsKey(room.RoomId))
+        if (!_roomStats.ContainsKey(context.Room.Id.Value))
         {
-            _roomStats[room.RoomId] = new RoomVoteStats();
+            _roomStats[context.Room.Id.Value] = new RoomVoteStats();
         }
 
-        var stats = _roomStats[room.RoomId];
+        var stats = _roomStats[context.Room.Id.Value];
 
-        switch (newState)
+        switch (context.NewState)
         {
             case "SelectChart":
                 // Announce voting mode when entering chart selection
-                if (room.IsCycleMode)
+                if (context.Room.Cycle)
                 {
-                    await room.SendMessageAsync("[CycleVoting] Cycle voting mode is active. All players can select charts!");
+                    await context.Room.SendAsync(new Core.ChatMessage(-1, 
+                        "[CycleVoting] Cycle voting mode is active. All players can select charts!"));
                     stats.VotingRoundStarted();
                 }
                 break;
@@ -57,29 +60,30 @@ public class CycleVotingPlugin : PluginBase
             case "WaitingForReady":
                 // Announce chart selection complete
                 stats.VotingRoundEnded();
-                await room.SendMessageAsync($"[CycleVoting] Chart selected! Total voting rounds: {stats.TotalRounds}");
+                await context.Room.SendAsync(new Core.ChatMessage(-1, 
+                    $"[CycleVoting] Chart selected! Total voting rounds: {stats.TotalRounds}"));
                 break;
 
             case "Playing":
                 // Game started
-                Context.Logger.Debug($"Room {room.RoomId} started playing in cycle voting mode");
+                Console.WriteLine($"[CycleVotingPlugin] Room {context.Room.Id} started playing in cycle voting mode");
                 break;
         }
     }
 
-    private async Task OnRoomMessage(IRoomContext room, IUserContext user, string message)
+    public async Task HandleMessageAsync(RoomMessageContext context)
     {
-        // Check if user is selecting a chart in cycle voting mode
-        if (!room.IsCycleVotingMode || !room.IsCycleMode)
+        // Check if user is asking about voting
+        if (!context.Room.CycleVotingMode || !context.Room.Cycle)
             return;
 
-        // This is a simple example - in real implementation we'd track chart selections
-        // For now, just provide helpful messages when users ask about voting
-        if (message.ToLower().Contains("vote") || message.ToLower().Contains("how"))
+        var msg = context.Message.ToLower();
+        if (msg.Contains("vote") || msg.Contains("how") || msg == "?")
         {
-            await room.SendMessageToUserAsync(user, 
-                "[CycleVoting] In cycle voting mode, all players can select charts. " +
-                "The host will randomly choose from all votes when starting the game.");
+            var help = "[CycleVoting] In cycle voting mode, all players can select charts. " +
+                      "The host will randomly choose from all votes when starting the game.\n" +
+                      "Try /info for more details.";
+            await context.Room.SendAsync(new Core.ChatMessage(-1, help));
         }
     }
 

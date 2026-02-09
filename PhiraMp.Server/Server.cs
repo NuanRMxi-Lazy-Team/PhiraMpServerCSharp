@@ -54,14 +54,12 @@ public class ServerState
     public ConcurrentDictionary<int, User> Users { get; } = new();
     public ConcurrentDictionary<string, Room> Rooms { get; } = new();
     public Channel<Guid> LostConnectionChannel { get; }
-    public ServerAPIImpl ServerAPI { get; }
     public PluginManager? PluginManager { get; set; }
 
     public ServerState(ServerConfig config)
     {
         Config = config;
         LostConnectionChannel = Channel.CreateUnbounded<Guid>();
-        ServerAPI = new ServerAPIImpl(this);
     }
 
     public async Task LostConnectionAsync(Guid sessionId)
@@ -86,7 +84,7 @@ public class PhiraMpServer : IDisposable
         _state = new ServerState(config);
 
         // Initialize plugin manager
-        _state.PluginManager = new PluginManager(_state.ServerAPI);
+        _state.PluginManager = new PluginManager(_state);
 
         var bindAddress = IPAddress.Parse(config.BindIp);
         _listener = new TcpListener(bindAddress, config.Port);

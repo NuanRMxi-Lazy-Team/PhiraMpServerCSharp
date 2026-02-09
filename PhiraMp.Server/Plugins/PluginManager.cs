@@ -1,26 +1,41 @@
-using System.Collections.Concurrent;
+using System.ComponentModel.Composition;
+using System.ComponentModel.Composition.Hosting;
 using System.Reflection;
-using System.Runtime.Loader;
-using PhiraMp.Plugin.SDK;
 
 namespace PhiraMp.Server.Plugins;
 
 /// <summary>
-/// Plugin manager handles loading, unloading, and reloading plugins with isolation
+/// MEF-based plugin manager - discovers and manages plugins without requiring specific base classes
 /// </summary>
 public class PluginManager : IDisposable
 {
-    private readonly ConcurrentDictionary<string, PluginContainer> _plugins = new();
-    private readonly IServerAPI _serverAPI;
+    private readonly ServerState _serverState;
     private readonly string _pluginDirectory;
     private readonly string _configDirectory;
     private readonly string _dataDirectory;
+    private readonly Dictionary<string, PluginLoadInfo> _loadedPlugins = new();
     private FileSystemWatcher? _watcher;
+    private CompositionContainer? _container;
     private bool _disposed;
 
-    public PluginManager(IServerAPI serverAPI, string pluginDirectory = "plugins")
+    [ImportMany(typeof(IPluginModule))]
+    public IEnumerable<IPluginModule>? PluginModules { get; set; }
+
+    [ImportMany(typeof(IRoomMessageHandler))]
+    public IEnumerable<IRoomMessageHandler>? MessageHandlers { get; set; }
+
+    [ImportMany(typeof(IRoomStateHandler))]
+    public IEnumerable<IRoomStateHandler>? StateHandlers { get; set; }
+
+    [ImportMany(typeof(IUserJoinHandler))]
+    public IEnumerable<IUserJoinHandler>? UserJoinHandlers { get; set; }
+
+    [ImportMany(typeof(IUserLeaveHandler))]
+    public IEnumerable<IUserLeaveHandler>? UserLeaveHandlers { get; set; }
+
+    public PluginManager(ServerState serverState, string pluginDirectory = "plugins")
     {
-        _serverAPI = serverAPI;
+        _serverState = serverState;
         _pluginDirectory = Path.GetFullPath(pluginDirectory);
         _configDirectory = Path.Combine(_pluginDirectory, "configs");
         _dataDirectory = Path.Combine(_pluginDirectory, "data");
@@ -31,163 +46,123 @@ public class PluginManager : IDisposable
     }
 
     /// <summary>
-    /// Load all plugins from the plugin directory
+    /// Load all plugins using MEF discovery
     /// </summary>
     public async Task LoadAllPluginsAsync()
     {
         Logger.Info($"Loading plugins from {_pluginDirectory}");
 
-        var dllFiles = Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
-        foreach (var dllFile in dllFiles)
-        {
-            await LoadPluginAsync(dllFile);
-        }
-
-        Logger.Info($"Loaded {_plugins.Count} plugins");
-    }
-
-    /// <summary>
-    /// Load a single plugin from a DLL file
-    /// </summary>
-    public async Task<bool> LoadPluginAsync(string dllPath)
-    {
         try
         {
-            var fileName = Path.GetFileName(dllPath);
-            if (_plugins.ContainsKey(fileName))
-            {
-                Logger.Warning($"Plugin {fileName} is already loaded");
-                return false;
-            }
-
-            Logger.Info($"Loading plugin: {fileName}");
-
-            // Create isolated load context for the plugin
-            var loadContext = new PluginLoadContext(dllPath);
-            var assembly = loadContext.LoadFromAssemblyPath(dllPath);
-
-            // Find plugin classes
-            var pluginTypes = assembly.GetTypes()
-                .Where(t => typeof(IPlugin).IsAssignableFrom(t) && !t.IsAbstract && !t.IsInterface)
-                .ToList();
-
-            if (pluginTypes.Count == 0)
-            {
-                Logger.Warning($"No plugin classes found in {fileName}");
-                loadContext.Unload();
-                return false;
-            }
-
-            if (pluginTypes.Count > 1)
-            {
-                Logger.Warning($"Multiple plugin classes found in {fileName}, using the first one");
-            }
-
-            var pluginType = pluginTypes[0];
-            var plugin = (IPlugin?)Activator.CreateInstance(pluginType);
+            // Create MEF catalog from plugin directory
+            var catalog = new AggregateCatalog();
             
-            if (plugin == null)
+            var dllFiles = Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
+            foreach (var dllFile in dllFiles)
             {
-                Logger.Error($"Failed to create plugin instance from {fileName}");
-                loadContext.Unload();
-                return false;
+                try
+                {
+                    // Use DirectoryCatalog for each DLL
+                    var assembly = Assembly.LoadFrom(dllFile);
+                    var assemblyCatalog = new AssemblyCatalog(assembly);
+                    catalog.Catalogs.Add(assemblyCatalog);
+                    
+                    _loadedPlugins[Path.GetFileName(dllFile)] = new PluginLoadInfo
+                    {
+                        Path = dllFile,
+                        Assembly = assembly,
+                        LoadTime = DateTime.UtcNow
+                    };
+                    
+                    Logger.Info($"Cataloged plugin: {Path.GetFileName(dllFile)}");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Failed to catalog {dllFile}:");
+                }
             }
 
-            // Create plugin context
-            var context = new PluginContext(_serverAPI, plugin.Name, _configDirectory, _dataDirectory);
+            // Create composition container
+            _container = new CompositionContainer(catalog);
+            
+            // Compose this instance to get all imports
+            _container.SatisfyImportsOnce(this);
 
-            // Create container
-            var container = new PluginContainer(plugin, loadContext, dllPath, context);
-            _plugins[fileName] = container;
+            // Initialize all plugin modules
+            if (PluginModules != null)
+            {
+                var context = new PluginContext(_serverState, _pluginDirectory, _configDirectory, _dataDirectory);
+                foreach (var module in PluginModules)
+                {
+                    try
+                    {
+                        await module.InitializeAsync(context);
+                        Logger.Info($"Initialized plugin module: {module.GetType().Name}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, $"Failed to initialize plugin {module.GetType().Name}:");
+                    }
+                }
+            }
 
-            // Load the plugin
-            await plugin.OnLoadAsync(context);
-            await plugin.OnEnableAsync();
-
-            Logger.Info($"Plugin loaded: {plugin.Name} v{plugin.Version}");
-            return true;
+            Logger.Info($"Loaded {_loadedPlugins.Count} plugins with MEF");
+            Logger.Info($"  - {PluginModules?.Count() ?? 0} modules");
+            Logger.Info($"  - {MessageHandlers?.Count() ?? 0} message handlers");
+            Logger.Info($"  - {StateHandlers?.Count() ?? 0} state handlers");
+            Logger.Info($"  - {UserJoinHandlers?.Count() ?? 0} user join handlers");
+            Logger.Info($"  - {UserLeaveHandlers?.Count() ?? 0} user leave handlers");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, $"Failed to load plugin from {dllPath}:");
-            return false;
+            Logger.Error(ex, "Failed to load plugins:");
         }
     }
 
     /// <summary>
-    /// Unload a plugin by name
+    /// Reload all plugins
     /// </summary>
-    public async Task<bool> UnloadPluginAsync(string fileName)
+    public async Task ReloadAllPluginsAsync()
     {
-        if (!_plugins.TryRemove(fileName, out var container))
+        Logger.Info("Reloading all plugins...");
+        
+        // Shutdown current plugins
+        if (PluginModules != null)
         {
-            Logger.Warning($"Plugin {fileName} not found");
-            return false;
-        }
-
-        try
-        {
-            Logger.Info($"Unloading plugin: {container.Plugin.Name}");
-
-            await container.Plugin.OnDisableAsync();
-            await container.Plugin.OnUnloadAsync();
-
-            // Unload the assembly
-            container.LoadContext.Unload();
-
-            // Wait for GC to collect
-            for (int i = 0; i < 10; i++)
+            foreach (var module in PluginModules)
             {
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                if (container.LoadContext.IsCollectible)
-                    break;
-                await Task.Delay(100);
+                try
+                {
+                    await module.ShutdownAsync();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Error shutting down plugin {module.GetType().Name}:");
+                }
             }
-
-            Logger.Info($"Plugin unloaded: {container.Plugin.Name}");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, $"Failed to unload plugin {fileName}:");
-            return false;
-        }
-    }
-
-    /// <summary>
-    /// Reload a plugin (unload and load again)
-    /// </summary>
-    public async Task<bool> ReloadPluginAsync(string fileName)
-    {
-        if (!_plugins.TryGetValue(fileName, out var container))
-        {
-            Logger.Warning($"Plugin {fileName} not found");
-            return false;
         }
 
-        var dllPath = container.DllPath;
-        Logger.Info($"Reloading plugin: {container.Plugin.Name}");
-
-        if (!await UnloadPluginAsync(fileName))
-            return false;
-
-        // Wait a bit for file handles to be released
+        // Dispose current container
+        _container?.Dispose();
+        _container = null;
+        
+        // Clear plugin info
+        _loadedPlugins.Clear();
+        
+        // Small delay to ensure files are released
         await Task.Delay(500);
+        
+        // GC to help unload assemblies
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
 
-        return await LoadPluginAsync(dllPath);
+        // Reload
+        await LoadAllPluginsAsync();
     }
 
     /// <summary>
-    /// Get all loaded plugins
-    /// </summary>
-    public IEnumerable<IPlugin> GetPlugins()
-    {
-        return _plugins.Values.Select(c => c.Plugin);
-    }
-
-    /// <summary>
-    /// Enable file system watching for hot reload
+    /// Enable hot reload monitoring
     /// </summary>
     public void EnableHotReload()
     {
@@ -208,28 +183,106 @@ public class PluginManager : IDisposable
 
     private void OnPluginFileChanged(object sender, FileSystemEventArgs e)
     {
-        var fileName = Path.GetFileName(e.FullPath);
-        Logger.Info($"Plugin file changed: {fileName}");
-        
-        // Debounce: wait a bit for file to be fully written
+        Logger.Info($"Plugin file changed: {Path.GetFileName(e.FullPath)}");
         Task.Run(async () =>
         {
-            await Task.Delay(1000);
-            await ReloadPluginAsync(fileName);
+            await Task.Delay(1000); // Debounce
+            await ReloadAllPluginsAsync();
         });
     }
 
     private void OnPluginFileCreated(object sender, FileSystemEventArgs e)
     {
-        var fileName = Path.GetFileName(e.FullPath);
-        Logger.Info($"Plugin file created: {fileName}");
-        
-        // Debounce: wait a bit for file to be fully written
+        Logger.Info($"Plugin file created: {Path.GetFileName(e.FullPath)}");
         Task.Run(async () =>
         {
-            await Task.Delay(1000);
-            await LoadPluginAsync(e.FullPath);
+            await Task.Delay(1000); // Debounce
+            await ReloadAllPluginsAsync();
         });
+    }
+
+    /// <summary>
+    /// Dispatch room message to all handlers
+    /// </summary>
+    public async Task DispatchRoomMessageAsync(Room room, User user, string message)
+    {
+        if (MessageHandlers == null) return;
+
+        var context = new RoomMessageContext(room, user, message);
+        foreach (var handler in MessageHandlers)
+        {
+            try
+            {
+                await handler.HandleMessageAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in message handler {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch room state change to all handlers
+    /// </summary>
+    public async Task DispatchRoomStateChangeAsync(Room room, string newState)
+    {
+        if (StateHandlers == null) return;
+
+        var context = new RoomStateContext(room, newState);
+        foreach (var handler in StateHandlers)
+        {
+            try
+            {
+                await handler.HandleStateChangeAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in state handler {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch user join to all handlers
+    /// </summary>
+    public async Task DispatchUserJoinAsync(Room room, User user)
+    {
+        if (UserJoinHandlers == null) return;
+
+        var context = new UserEventContext(room, user);
+        foreach (var handler in UserJoinHandlers)
+        {
+            try
+            {
+                await handler.HandleUserJoinAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in user join handler {handler.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dispatch user leave to all handlers
+    /// </summary>
+    public async Task DispatchUserLeaveAsync(Room room, User user)
+    {
+        if (UserLeaveHandlers == null) return;
+
+        var context = new UserEventContext(room, user);
+        foreach (var handler in UserLeaveHandlers)
+        {
+            try
+            {
+                await handler.HandleUserLeaveAsync(context);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error in user leave handler {handler.GetType().Name}:");
+            }
+        }
     }
 
     public void Dispose()
@@ -240,85 +293,33 @@ public class PluginManager : IDisposable
 
         _watcher?.Dispose();
 
-        // Unload all plugins
-        foreach (var container in _plugins.Values)
+        // Shutdown all plugins
+        if (PluginModules != null)
         {
-            try
+            foreach (var module in PluginModules)
             {
-                container.Plugin.OnDisableAsync().Wait();
-                container.Plugin.OnUnloadAsync().Wait();
-                container.LoadContext.Unload();
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"Error unloading plugin {container.Plugin.Name}:");
+                try
+                {
+                    module.ShutdownAsync().Wait();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, $"Error shutting down plugin {module.GetType().Name}:");
+                }
             }
         }
 
-        _plugins.Clear();
+        _container?.Dispose();
+        _loadedPlugins.Clear();
     }
 }
 
 /// <summary>
-/// Plugin load context for assembly isolation
+/// Information about a loaded plugin
 /// </summary>
-internal class PluginLoadContext : AssemblyLoadContext
+internal class PluginLoadInfo
 {
-    private readonly AssemblyDependencyResolver _resolver;
-
-    public PluginLoadContext(string pluginPath) : base(isCollectible: true)
-    {
-        _resolver = new AssemblyDependencyResolver(pluginPath);
-    }
-
-    protected override Assembly? Load(AssemblyName assemblyName)
-    {
-        // Allow sharing of SDK and Core assemblies
-        if (assemblyName.Name == "PhiraMp.Plugin.SDK" || 
-            assemblyName.Name == "PhiraMp.Core" ||
-            assemblyName.Name?.StartsWith("System") == true ||
-            assemblyName.Name?.StartsWith("Microsoft") == true ||
-            assemblyName.Name?.StartsWith("netstandard") == true)
-        {
-            return null; // Use default context
-        }
-
-        var assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
-        if (assemblyPath != null)
-        {
-            return LoadFromAssemblyPath(assemblyPath);
-        }
-
-        return null;
-    }
-
-    protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
-    {
-        var libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        if (libraryPath != null)
-        {
-            return LoadUnmanagedDllFromPath(libraryPath);
-        }
-
-        return IntPtr.Zero;
-    }
-}
-
-/// <summary>
-/// Container holding plugin instance and its load context
-/// </summary>
-internal class PluginContainer
-{
-    public IPlugin Plugin { get; }
-    public PluginLoadContext LoadContext { get; }
-    public string DllPath { get; }
-    public PluginContext Context { get; }
-
-    public PluginContainer(IPlugin plugin, PluginLoadContext loadContext, string dllPath, PluginContext context)
-    {
-        Plugin = plugin;
-        LoadContext = loadContext;
-        DllPath = dllPath;
-        Context = context;
-    }
+    public string Path { get; set; } = "";
+    public Assembly? Assembly { get; set; }
+    public DateTime LoadTime { get; set; }
 }

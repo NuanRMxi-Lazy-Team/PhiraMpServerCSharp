@@ -279,7 +279,10 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             
             // Notify plugins before sending message
-            await Server.ServerAPI.OnRoomMessageAsync(room, User, cmd.Message.Value);
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchRoomMessageAsync(room, User, cmd.Message.Value);
+            }
             
             await room.SendAsAsync(User, cmd.Message.Value);
             return new ChatResponseCommand(true);
@@ -386,7 +389,10 @@ public class Session : IDisposable
             User.Room = room;
 
             // Notify plugins of user joining
-            await Server.ServerAPI.OnUserJoinAsync(room, User);
+            if (Server.PluginManager != null)
+            {
+                await Server.PluginManager.DispatchUserJoinAsync(room, User);
+            }
 
             var response = new JoinRoomResponse(
                 room.GetClientRoomState(),
