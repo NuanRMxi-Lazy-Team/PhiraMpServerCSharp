@@ -2,70 +2,12 @@ using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Channels;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
+using PhiraMp.Server.Models;
 using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Server;
 
-public class ServerConfig
-{
-    public string BindIp { get; set; } = "::";
-    public int Port { get; set; } = 12346;
-    public int RoomMaxPlayers { get; set; } = 8;
-    public List<int> Monitors { get; set; } = new() { 2 };
 
-    public static ServerConfig Load(string path = "server_config.yml")
-    {
-        try
-        {
-            if (!File.Exists(path))
-            {
-                // Create default config file
-                var defaultConfig = new ServerConfig();
-                var serializer = new SerializerBuilder()
-                    .WithNamingConvention(UnderscoredNamingConvention.Instance)
-                    .Build();
-                var yamlNew = serializer.Serialize(defaultConfig);
-                File.WriteAllText(path, yamlNew);
-                return new ServerConfig();
-            }
-                
-
-            var deserializer = new DeserializerBuilder()
-                .WithNamingConvention(UnderscoredNamingConvention.Instance)
-                .Build();
-
-            var yaml = File.ReadAllText(path);
-            return deserializer.Deserialize<ServerConfig>(yaml) ?? new ServerConfig();
-        }
-        catch
-        {
-            return new ServerConfig();
-        }
-    }
-}
-
-public class ServerState
-{
-    public ServerConfig Config { get; }
-    public ConcurrentDictionary<Guid, Session> Sessions { get; } = new();
-    public ConcurrentDictionary<int, User> Users { get; } = new();
-    public ConcurrentDictionary<string, Room> Rooms { get; } = new();
-    public Channel<Guid> LostConnectionChannel { get; }
-    public PluginManager? PluginManager { get; set; }
-
-    public ServerState(ServerConfig config)
-    {
-        Config = config;
-        LostConnectionChannel = Channel.CreateUnbounded<Guid>();
-    }
-
-    public async Task LostConnectionAsync(Guid sessionId)
-    {
-        await LostConnectionChannel.Writer.WriteAsync(sessionId);
-    }
-}
 
 public class PhiraMpServer : IDisposable
 {
@@ -87,7 +29,7 @@ public class PhiraMpServer : IDisposable
 
         var bindAddress = IPAddress.Parse(config.BindIp);
         _listener = new TcpListener(bindAddress, config.Port);
-        
+
         // Enable dual-stack mode for IPv6
         if (bindAddress.AddressFamily == AddressFamily.InterNetworkV6)
         {
