@@ -1,5 +1,4 @@
 using System.ComponentModel.Composition;
-using PhiraMp.Server;
 using PhiraMp.Server.Plugins;
 using PhiraMp.Server.Models;
 using PhiraMp.Core;
@@ -8,14 +7,14 @@ namespace PhiraMp.Plugins.CycleVoting;
 
 /// <summary>
 /// 循环投票插件 - 完全独立管理所有投票逻辑
-/// 所有状态都存储在插件内部，不依赖服务器核心
 /// </summary>
 [Export(typeof(IPluginModule))]
 [Export(typeof(ISelectChartHandler))]
 [Export(typeof(IRequestStartHandler))]
 [Export(typeof(ICycleModeChangeHandler))]
 [Export(typeof(IRoomStateHandler))]
-public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestStartHandler, ICycleModeChangeHandler, IRoomStateHandler
+public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestStartHandler, ICycleModeChangeHandler,
+    IRoomStateHandler
 {
     private readonly Dictionary<string, RoomVotingState> _roomVotingStates = new();
     private PluginContext? _context;
@@ -43,6 +42,7 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
         {
             _roomVotingStates[roomId] = new RoomVotingState();
         }
+
         return _roomVotingStates[roomId];
     }
 
@@ -60,17 +60,17 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
             return;
 
         var state = GetOrCreateVotingState(room.Id.Value);
-        
+
         // 如果投票已启用，记录投票
         if (state.VotingEnabled)
         {
             state.RecordVote(user.Id, chart);
             _context?.Logger.Debug($"用户 {user.Name} 在房间 {room.Id} 投票给谱面 {chart.Name}");
-            
+
             // 通知房间
             await _context!.API.SendRoomMessageAsync(
-                room, 
-                $"📊 {user.Name} 投票: {chart.Name} (共 {state.VoteCount} 票)");
+                room,
+                $"{user.Name} 投票: {chart.Name} (共 {state.VoteCount} 票)");
         }
 
         await Task.CompletedTask;
@@ -82,13 +82,13 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
     public async Task HandleRequestStartAsync(RequestStartContext context)
     {
         var room = context.Room;
-        
+
         // 只在循环模式下处理
         if (!room.Cycle)
             return;
 
         var state = GetOrCreateVotingState(room.Id.Value);
-        
+
         // 如果投票已启用，从投票中随机选择谱面
         if (state.VotingEnabled)
         {
@@ -115,11 +115,11 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
 
             // 通知所有用户最终选择的谱面
             await room.OnStateChangeAsync();
-            
+
             // 发送通知消息
             await _context!.API.SendRoomMessageAsync(
-                room, 
-                $"🎲 投票结果: {selectedChart.Name}");
+                room,
+                $"投票结果: {selectedChart.Name}");
         }
     }
 
@@ -130,12 +130,12 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
     {
         var room = context.Room;
         var cycleEnabled = context.CycleEnabled;
-        
+
         var state = GetOrCreateVotingState(room.Id.Value);
-        
+
         // 启用或禁用投票
         state.VotingEnabled = cycleEnabled;
-        
+
         if (cycleEnabled)
         {
             // 授予所有非房主用户假房主权限，以便他们可以选歌
@@ -147,9 +147,9 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
                     await user.TrySendAsync(new ChangeHostCommand(true));
                 }
             }
-            
+
             _context?.Logger.Info($"房间 {room.Id} 已启用循环投票");
-            await _context!.API.SendRoomMessageAsync(room, "🗳️ 循环投票模式已启用 - 所有玩家都可以选歌投票！");
+            await _context!.API.SendRoomMessageAsync(room, "循环投票模式已启用 - 所有玩家都可以选歌投票！");
         }
         else
         {
@@ -162,10 +162,10 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
                     await user.TrySendAsync(new ChangeHostCommand(false));
                 }
             }
-            
+
             state.ClearVotes();
             _context?.Logger.Info($"房间 {room.Id} 已禁用循环投票");
-            await _context!.API.SendRoomMessageAsync(room, "❌ 循环投票模式已禁用");
+            await _context!.API.SendRoomMessageAsync(room, "循环投票模式已禁用");
         }
     }
 
@@ -175,7 +175,7 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
     public async Task HandleStateChangeAsync(RoomStateContext context)
     {
         var room = context.Room;
-        
+
         // 只在循环模式且投票启用时处理
         if (!room.Cycle)
             return;
@@ -195,10 +195,10 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
                     await user.TrySendAsync(new ChangeHostCommand(true));
                 }
             }
-            
+
             await _context!.API.SendRoomMessageAsync(
-                room, 
-                "🔄 新回合开始 - 所有玩家可以选歌投票！");
+                room,
+                "新回合开始 - 所有玩家可以选歌投票！");
         }
     }
 
@@ -209,7 +209,7 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
     {
         /// <summary>是否启用投票</summary>
         public bool VotingEnabled { get; set; }
-        
+
         /// <summary>用户投票记录</summary>
         private readonly Dictionary<int, ChartInfo> _votes = new();
 

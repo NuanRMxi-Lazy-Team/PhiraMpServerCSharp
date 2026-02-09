@@ -296,7 +296,7 @@ public class Session : IDisposable
     private async Task<ServerCommand?> HandleTouchesAsync(TouchesCommand cmd)
     {
         var room = User.Room;
-        if (room != null && room.Live)
+        if (room is { Live: true })
         {
             Logger.Debug($"Received {cmd.Frames.Count} touch events from {User.Id}");
             if (cmd.Frames.Count > 0)
@@ -315,7 +315,7 @@ public class Session : IDisposable
     private async Task<ServerCommand?> HandleJudgesAsync(JudgesCommand cmd)
     {
         var room = User.Room;
-        if (room != null && room.Live)
+        if (room is { Live: true })
         {
             Logger.Debug($"Received {cmd.Judges.Count} judge events from {User.Id}");
             _ = Task.Run(() => room.BroadcastMonitorsAsync(new ServerJudgesCommand(User.Id, cmd.Judges)));
@@ -340,7 +340,6 @@ public class Session : IDisposable
 
             // Broadcast user info so clients can map user ID to username
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
-            await Task.Delay(1); // Ensure message order
             await room.SendAsync(new CreateRoomMessage(User.Id));
             User.Room = room;
 

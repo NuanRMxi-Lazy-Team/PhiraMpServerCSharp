@@ -165,14 +165,6 @@ public class PluginManager : IDisposable
     private void LogPluginLoadSummary()
     {
         Logger.Info($"使用 MEF 加载了 {_loadedPlugins.Count} 个插件");
-        Logger.Info($"  - {PluginModules?.Count() ?? 0} 个模块");
-        Logger.Info($"  - {MessageHandlers?.Count() ?? 0} 个消息处理器");
-        Logger.Info($"  - {StateHandlers?.Count() ?? 0} 个状态处理器");
-        Logger.Info($"  - {UserJoinHandlers?.Count() ?? 0} 个用户加入处理器");
-        Logger.Info($"  - {UserLeaveHandlers?.Count() ?? 0} 个用户离开处理器");
-        Logger.Info($"  - {RequestStartHandlers?.Count() ?? 0} 个游戏开始处理器");
-        Logger.Info($"  - {SelectChartHandlers?.Count() ?? 0} 个选歌处理器");
-        Logger.Info($"  - {CycleModeChangeHandlers?.Count() ?? 0} 个循环模式处理器");
     }
 
     /// <summary>

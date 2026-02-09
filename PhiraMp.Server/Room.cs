@@ -111,6 +111,10 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有用户
+    /// </summary>
+    /// <returns></returns>
     public List<User> GetUsers()
     {
         lock (_lock)
@@ -119,6 +123,9 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有监视器
+    /// </summary>
     public List<User> GetMonitors()
     {
         lock (_lock)
@@ -127,6 +134,9 @@ public class Room
         }
     }
 
+    /// <summary>
+    /// 获取所有玩家（排除监视器）
+    /// </summary>
     public List<User> GetAllUsers()
     {
         lock (_lock)
