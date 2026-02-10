@@ -55,3 +55,7 @@ nunit-*.xml
 
 # Rider
 .idea/
+
+# Plugin DLLs (build artifacts)
+plugins/*.dll
+plugins/*.pdb
