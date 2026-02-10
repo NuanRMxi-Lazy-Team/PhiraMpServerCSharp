@@ -48,11 +48,6 @@ public interface IPluginAPI
     User? GetUser(int userId);
     
     /// <summary>
-    /// 踢出用户（断开连接）
-    /// </summary>
-    Task KickUserAsync(User user, string reason = "被服务器踢出");
-    
-    /// <summary>
     /// 将用户从房间移除
     /// </summary>
     Task RemoveUserFromRoomAsync(User user, string reason = "被移出房间");
@@ -159,18 +154,6 @@ public class PluginAPI : IPluginAPI
     {
         _serverState.Users.TryGetValue(userId, out var user);
         return user;
-    }
-
-    public async Task KickUserAsync(User user, string reason = "被服务器踢出")
-    {
-        _logger.Info($"踢出用户 {user.Name} (ID: {user.Id}): {reason}");
-        
-        // 发送聊天消息通知用户
-        await user.TrySendAsync(new MessageCommand(new ChatMessage(-1, $"你已被踢出: {reason}")));
-        await Task.Delay(100); // 给客户端一点时间接收消息
-        
-        // 使用 DangleAsync 断开连接
-        await user.DangleAsync();
     }
 
     public async Task RemoveUserFromRoomAsync(User user, string reason = "被移出房间")
