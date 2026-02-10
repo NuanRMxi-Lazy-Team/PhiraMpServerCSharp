@@ -144,6 +144,11 @@ public class PluginContext
     /// </summary>
     public IPluginConfig Config { get; }
     
+    /// <summary>
+    /// 插件服务提供者 - 支持插件间依赖注入
+    /// </summary>
+    public IPluginServiceProvider ServiceProvider { get; }
+    
     public PluginContext(
         ServerState serverState, 
         string pluginDir, 
@@ -151,7 +156,8 @@ public class PluginContext
         string dataDir,
         IPluginAPI api,
         IPluginLogger logger,
-        IPluginConfig config)
+        IPluginConfig config,
+        IPluginServiceProvider serviceProvider)
     {
         ServerState = serverState;
         PluginDirectory = pluginDir;
@@ -160,13 +166,14 @@ public class PluginContext
         API = api;
         Logger = logger;
         Config = config;
+        ServiceProvider = serviceProvider;
     }
 }
 
 /// <summary>
 /// 房间消息事件上下文
 /// </summary>
-public class RoomMessageContext
+public class RoomMessageContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -188,7 +195,7 @@ public class RoomMessageContext
 /// <summary>
 /// 房间状态变化事件上下文
 /// </summary>
-public class RoomStateContext
+public class RoomStateContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -206,7 +213,7 @@ public class RoomStateContext
 /// <summary>
 /// 用户加入/离开事件上下文
 /// </summary>
-public class UserEventContext
+public class UserEventContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -224,7 +231,7 @@ public class UserEventContext
 /// <summary>
 /// 请求开始游戏事件上下文
 /// </summary>
-public class RequestStartContext
+public class RequestStartContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -242,7 +249,7 @@ public class RequestStartContext
 /// <summary>
 /// 选歌事件上下文
 /// </summary>
-public class SelectChartContext
+public class SelectChartContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -264,7 +271,7 @@ public class SelectChartContext
 /// <summary>
 /// 循环模式变化事件上下文
 /// </summary>
-public class CycleModeChangeContext
+public class CycleModeChangeContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
     public Room Room { get; }
@@ -286,7 +293,7 @@ public class CycleModeChangeContext
 /// <summary>
 /// 加入房间请求事件上下文
 /// </summary>
-public class JoinRoomRequestContext
+public class JoinRoomRequestContext : BasePipelineContext
 {
     /// <summary>发起请求的用户</summary>
     public User User { get; }
@@ -312,7 +319,7 @@ public class JoinRoomRequestContext
 /// <summary>
 /// 创建房间请求事件上下文
 /// </summary>
-public class CreateRoomRequestContext
+public class CreateRoomRequestContext : BasePipelineContext
 {
     /// <summary>发起请求的用户</summary>
     public User User { get; }
