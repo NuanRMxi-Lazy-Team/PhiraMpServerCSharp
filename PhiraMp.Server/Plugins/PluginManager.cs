@@ -19,6 +19,7 @@ public class PluginManager : IDisposable
     private FileSystemWatcher? _watcher;
     private CompositionContainer? _container;
     private bool _disposed;
+    private readonly PluginServiceProvider _serviceProvider = new();
 
     [ImportMany(typeof(IPluginModule))]
     public IEnumerable<IPluginModule>? PluginModules { get; set; }
@@ -154,7 +155,8 @@ public class PluginManager : IDisposable
                     _dataDirectory,
                     api,
                     logger,
-                    config);
+                    config,
+                    _serviceProvider);
                 
                 await module.InitializeAsync(context);
                 Logger.Info($"已初始化插件模块: {pluginName}");
@@ -242,6 +244,9 @@ public class PluginManager : IDisposable
             // 清理容器
             _container?.Dispose();
             _loadedPlugins.Clear();
+            
+            // 清理插件服务
+            _serviceProvider.ClearServices();
 
             // 重新加载
             await LoadAllPluginsAsync();
@@ -264,17 +269,9 @@ public class PluginManager : IDisposable
         if (MessageHandlers == null) return;
 
         var context = new RoomMessageContext(room, user, message);
-        foreach (var handler in MessageHandlers)
-        {
-            try
-            {
-                await handler.HandleMessageAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"消息处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = MessageHandlers.Select(h => new RoomMessageHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -285,17 +282,9 @@ public class PluginManager : IDisposable
         if (StateHandlers == null) return;
 
         var context = new RoomStateContext(room, newState);
-        foreach (var handler in StateHandlers)
-        {
-            try
-            {
-                await handler.HandleStateChangeAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"状态处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = StateHandlers.Select(h => new RoomStateHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -306,17 +295,9 @@ public class PluginManager : IDisposable
         if (UserJoinHandlers == null) return;
 
         var context = new UserEventContext(room, user);
-        foreach (var handler in UserJoinHandlers)
-        {
-            try
-            {
-                await handler.HandleUserJoinAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"用户加入处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = UserJoinHandlers.Select(h => new UserJoinHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -327,17 +308,9 @@ public class PluginManager : IDisposable
         if (UserLeaveHandlers == null) return;
 
         var context = new UserEventContext(room, user);
-        foreach (var handler in UserLeaveHandlers)
-        {
-            try
-            {
-                await handler.HandleUserLeaveAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"用户离开处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = UserLeaveHandlers.Select(h => new UserLeaveHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -348,18 +321,9 @@ public class PluginManager : IDisposable
         if (RequestStartHandlers == null) return;
 
         var context = new RequestStartContext(room, user);
-        foreach (var handler in RequestStartHandlers)
-        {
-            try
-            {
-                await handler.HandleRequestStartAsync(context);
-            }
-            catch
-            {
-                // 重新抛出异常以允许插件阻止游戏开始
-                throw;
-            }
-        }
+        var adapters = RequestStartHandlers.Select(h => new RequestStartHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
     }
 
     /// <summary>
@@ -370,17 +334,9 @@ public class PluginManager : IDisposable
         if (SelectChartHandlers == null) return;
 
         var context = new SelectChartContext(room, user, chart);
-        foreach (var handler in SelectChartHandlers)
-        {
-            try
-            {
-                await handler.HandleSelectChartAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"选歌处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = SelectChartHandlers.Select(h => new SelectChartHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -391,17 +347,9 @@ public class PluginManager : IDisposable
         if (CycleModeChangeHandlers == null) return;
 
         var context = new CycleModeChangeContext(room, user, cycleEnabled);
-        foreach (var handler in CycleModeChangeHandlers)
-        {
-            try
-            {
-                await handler.HandleCycleModeChangeAsync(context);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, $"循环模式处理器错误 {handler.GetType().Name}:");
-            }
-        }
+        var adapters = CycleModeChangeHandlers.Select(h => new CycleModeChangeHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteAsync(adapters, context);
     }
 
     /// <summary>
@@ -412,18 +360,9 @@ public class PluginManager : IDisposable
         if (JoinRoomRequestHandlers == null) return roomId;
 
         var context = new JoinRoomRequestContext(user, roomId, monitor);
-        foreach (var handler in JoinRoomRequestHandlers)
-        {
-            try
-            {
-                await handler.HandleJoinRoomRequestAsync(context);
-            }
-            catch
-            {
-                // 插件抛出异常时重新抛出以阻止加入
-                throw;
-            }
-        }
+        var adapters = JoinRoomRequestHandlers.Select(h => new JoinRoomRequestHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
 
         // 返回可能被插件修改的目标房间 ID
         return context.TargetRoomId;
@@ -437,18 +376,9 @@ public class PluginManager : IDisposable
         if (CreateRoomRequestHandlers == null) return;
 
         var context = new CreateRoomRequestContext(user, roomId);
-        foreach (var handler in CreateRoomRequestHandlers)
-        {
-            try
-            {
-                await handler.HandleCreateRoomRequestAsync(context);
-            }
-            catch
-            {
-                // 插件抛出异常时重新抛出以阻止创建
-                throw;
-            }
-        }
+        var adapters = CreateRoomRequestHandlers.Select(h => new CreateRoomRequestHandlerAdapter(h));
+        
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
     }
 
     public void Dispose()
