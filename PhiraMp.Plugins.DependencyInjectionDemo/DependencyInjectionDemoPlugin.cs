@@ -195,11 +195,11 @@ public class PlayerStatsConsumerPlugin : IPluginModule, IRoomMessageHandler
             }
             else
             {
-                var message_text = $"玩家 {stats.Username} 的统计:\n" +
+                var messageText = $"玩家 {stats.Username} 的统计:\n" +
                           $"- 加入房间次数: {stats.RoomJoinCount}\n" +
                           $"- 首次出现: {stats.FirstSeen:yyyy-MM-dd HH:mm:ss}\n" +
                           $"- 最后出现: {stats.LastSeen:yyyy-MM-dd HH:mm:ss}";
-                await _api.SendRoomMessageAsync(context.Room, message_text);
+                await _api.SendRoomMessageAsync(context.Room, messageText);
             }
             
             _logger.Info($"用户 {context.User.Name} 查询了 {username} 的统计");

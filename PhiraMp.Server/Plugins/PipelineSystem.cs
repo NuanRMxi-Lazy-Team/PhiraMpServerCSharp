@@ -71,11 +71,8 @@ public class PipelineExecutor
             }
             catch (Exception ex)
             {
-                // 记录错误但继续执行后续处理器（除非是需要阻止的异常）
                 Logger.Error(ex, $"管线处理器错误 {handler.GetType().Name}:");
-                
-                // 如果是需要阻止操作的异常，重新抛出
-                throw;
+                // 不重新抛出，继续执行后续处理器
             }
         }
     }
