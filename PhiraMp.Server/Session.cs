@@ -308,11 +308,19 @@ public class Session : IDisposable
             var room = User.Room ?? throw new Exception("No room");
             
             // Notify plugins before sending message
+            bool handled = false;
             if (Server.PluginManager != null)
             {
-                await Server.PluginManager.DispatchRoomMessageAsync(room, User, cmd.Message.Value);
+                handled = await Server.PluginManager.DispatchRoomMessageAsync(room, User, cmd.Message.Value);
             }
             
+            // 如果插件已处理，返回 null（插件已负责发送响应）
+            if (handled)
+            {
+                return null;
+            }
+            
+            // 插件未处理，执行原始逻辑
             await room.SendAsAsync(User, cmd.Message.Value);
             return new ChatResponseCommand(true);
         }
@@ -387,21 +395,27 @@ public class Session : IDisposable
         }
     }
 
-    private async Task<ServerCommand> HandleJoinRoomAsync(JoinRoomCommand cmd)
+    private async Task<ServerCommand?> HandleJoinRoomAsync(JoinRoomCommand cmd)
     {
         try
         {
             if (User.Room != null)
                 throw new Exception("Already in room");
 
-            // 通知插件加入房间请求 - 插件可以修改目标房间 ID 或抛出异常阻止
-            var targetRoomId = cmd.Id;
+            // 通知插件加入房间请求
+            bool handled = false;
             if (Server.PluginManager != null)
             {
-                targetRoomId = await Server.PluginManager.DispatchJoinRoomRequestAsync(User, cmd.Id, cmd.Monitor);
+                handled = await Server.PluginManager.DispatchJoinRoomRequestAsync(User, cmd.Id, cmd.Monitor);
             }
 
-            if (!Server.Rooms.TryGetValue(targetRoomId.Value, out var room))
+            // 如果插件已处理，返回 null（插件已负责发送响应和加入逻辑）
+            if (handled)
+            {
+                return null;
+            }
+
+            if (!Server.Rooms.TryGetValue(cmd.Id.Value, out var room))
                 throw new Exception("Room not found");
 
             if (room.Locked)
@@ -416,13 +430,13 @@ public class Session : IDisposable
             if (!room.AddUser(User, cmd.Monitor))
                 throw new Exception("Room is full");
 
-            Logger.Info($"User {User.Id} joined room {targetRoomId} (monitor: {cmd.Monitor})");
+            Logger.Info($"User {User.Id} joined room {cmd.Id.Value} (monitor: {cmd.Monitor})");
 
             User.IsMonitor = cmd.Monitor;
             if (cmd.Monitor && !room.Live)
             {
                 room.Live = true;
-                Logger.Info($"Room {targetRoomId} goes live");
+                Logger.Info($"Room {cmd.Id.Value} goes live");
             }
 
             await room.BroadcastAsync(new OnJoinRoomCommand(User.ToInfo()));
@@ -514,7 +528,7 @@ public class Session : IDisposable
         }
     }
 
-    private async Task<ServerCommand> HandleSelectChartAsync(SelectChartCommand cmd)
+    private async Task<ServerCommand?> HandleSelectChartAsync(SelectChartCommand cmd)
     {
         try
         {
@@ -537,17 +551,23 @@ public class Session : IDisposable
 
             Logger.Debug($"Chart is {chart.Name} (ID: {chart.Id})");
 
-            // Set the chart
+            // Notify plugins of chart selection
+            bool handled = false;
+            if (Server.PluginManager != null)
+            {
+                handled = await Server.PluginManager.DispatchSelectChartAsync(room, User, chart);
+            }
+
+            // 如果插件已处理，返回 null（插件已负责发送响应）
+            if (handled)
+            {
+                return null!;
+            }
+
+            // 插件未处理，执行原始逻辑
             await room.SendAsync(new SelectChartMessage(User.Id, chart.Name, chart.Id));
             room.Chart = chart;
             await room.OnStateChangeAsync();
-
-            // Notify plugins of chart selection
-            if (Server.PluginManager != null)
-            {
-                await Server.PluginManager.DispatchSelectChartAsync(room, User, chart);
-            }
-
             return new SelectChartResponseCommand(true);
         }
         catch (OperationCanceledException)
@@ -561,7 +581,7 @@ public class Session : IDisposable
         }
     }
 
-    private async Task<ServerCommand> HandleRequestStartAsync()
+    private async Task<ServerCommand?> HandleRequestStartAsync()
     {
         try
         {
@@ -572,9 +592,16 @@ public class Session : IDisposable
             room.CheckHost(User);
 
             // Allow plugins to validate or prevent start (e.g., single-player prevention, voting)
+            bool handled = false;
             if (Server.PluginManager != null)
             {
-                await Server.PluginManager.DispatchRequestStartAsync(room, User);
+                handled = await Server.PluginManager.DispatchRequestStartAsync(room, User);
+            }
+
+            // 如果插件已处理，返回 null（插件已负责发送响应和游戏开始逻辑）
+            if (handled)
+            {
+                return null;
             }
 
             // Plugins should have set the chart if needed (e.g., from votes)
@@ -750,3 +777,5 @@ public class Session : IDisposable
         Dispose();
     }
 }
+
+

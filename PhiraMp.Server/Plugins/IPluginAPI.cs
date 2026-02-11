@@ -69,6 +69,9 @@ public interface IPluginAPI
     /// </summary>
     Task BroadcastMessageAsync(string message, int senderId = -1);
     
+    // ===== 发送任意命令的返回 =====
+    Task SendCommandAsync(User user, ServerCommand cmd);
+    
     // ===== 服务器状态 =====
     
     /// <summary>
@@ -193,6 +196,13 @@ public class PluginAPI : IPluginAPI
             await user.TrySendAsync(cmd);
         }
         _logger.Info($"广播消息给 {users.Count} 个用户: {message}");
+    }
+    
+    // ==== 发送任意命令实现 =====
+    public async Task SendCommandAsync(User user, ServerCommand cmd)
+    {
+        await user.TrySendAsync(cmd);
+        _logger.Debug($"向用户 {user.Name} 发送命令: {cmd.GetType().Name}");
     }
 
     // ===== 服务器状态实现 =====

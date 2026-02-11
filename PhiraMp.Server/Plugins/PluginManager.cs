@@ -21,8 +21,7 @@ public class PluginManager : IDisposable
     private bool _disposed;
     private readonly PluginServiceProvider _serviceProvider = new();
 
-    [ImportMany(typeof(IPluginModule))]
-    public IEnumerable<IPluginModule>? PluginModules { get; set; }
+    [ImportMany(typeof(IPluginModule))] public IEnumerable<IPluginModule>? PluginModules { get; set; }
 
     [ImportMany(typeof(IRoomMessageHandler))]
     public IEnumerable<IRoomMessageHandler>? MessageHandlers { get; set; }
@@ -30,8 +29,7 @@ public class PluginManager : IDisposable
     [ImportMany(typeof(IRoomStateHandler))]
     public IEnumerable<IRoomStateHandler>? StateHandlers { get; set; }
 
-    [ImportMany(typeof(IUserJoinHandler))]
-    public IEnumerable<IUserJoinHandler>? UserJoinHandlers { get; set; }
+    [ImportMany(typeof(IUserJoinHandler))] public IEnumerable<IUserJoinHandler>? UserJoinHandlers { get; set; }
 
     [ImportMany(typeof(IUserLeaveHandler))]
     public IEnumerable<IUserLeaveHandler>? UserLeaveHandlers { get; set; }
@@ -78,7 +76,7 @@ public class PluginManager : IDisposable
         {
             // 创建 MEF 目录
             var catalog = new AggregateCatalog();
-            
+
             var dllFiles = Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
             foreach (var dllFile in dllFiles)
             {
@@ -88,7 +86,7 @@ public class PluginManager : IDisposable
 
             // 创建组合容器
             _container = new CompositionContainer(catalog);
-            
+
             // 组合此实例以获取所有导入
             _container.SatisfyImportsOnce(this);
 
@@ -117,14 +115,14 @@ public class PluginManager : IDisposable
             var assembly = Assembly.LoadFrom(dllFile);
             var assemblyCatalog = new AssemblyCatalog(assembly);
             catalog.Catalogs.Add(assemblyCatalog);
-            
+
             _loadedPlugins[Path.GetFileName(dllFile)] = new PluginLoadInfo
             {
                 Path = dllFile,
                 Assembly = assembly,
                 LoadTime = DateTime.UtcNow
             };
-            
+
             Logger.Info($"已编目插件: {Path.GetFileName(dllFile)}");
             return true;
         }
@@ -150,17 +148,17 @@ public class PluginManager : IDisposable
                 var logger = new PluginLogger(pluginName);
                 var config = new PluginConfig(_configDirectory, logger);
                 var api = new PluginAPI(_serverState, logger);
-                
+
                 var context = new PluginContext(
-                    _serverState, 
-                    _pluginDirectory, 
-                    _configDirectory, 
+                    _serverState,
+                    _pluginDirectory,
+                    _configDirectory,
                     _dataDirectory,
                     api,
                     logger,
                     config,
                     _serviceProvider);
-                
+
                 await module.InitializeAsync(context);
                 Logger.Info($"已初始化插件模块: {pluginName}");
             }
@@ -211,7 +209,7 @@ public class PluginManager : IDisposable
     private void OnPluginFileChanged(object sender, FileSystemEventArgs e)
     {
         Logger.Info($"检测到插件变化: {e.Name} ({e.ChangeType})");
-        
+
         // 延迟重新加载以确保文件写入完成
         Task.Run(async () =>
         {
@@ -247,13 +245,13 @@ public class PluginManager : IDisposable
             // 清理容器
             _container?.Dispose();
             _loadedPlugins.Clear();
-            
+
             // 清理插件服务
             _serviceProvider.ClearServices();
 
             // 重新加载
             await LoadAllPluginsAsync();
-            
+
             Logger.Info("插件重新加载完成");
         }
         catch (Exception ex)
@@ -267,121 +265,136 @@ public class PluginManager : IDisposable
     /// <summary>
     /// 分发房间消息到所有处理器
     /// </summary>
-    public async Task DispatchRoomMessageAsync(Room room, User user, string message)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchRoomMessageAsync(Room room, User user, string message)
     {
-        if (MessageHandlers == null) return;
+        if (MessageHandlers == null) return false;
 
         var context = new RoomMessageContext(room, user, message);
         var adapters = MessageHandlers.Select(h => new RoomMessageHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发房间状态变化到所有处理器
     /// </summary>
-    public async Task DispatchRoomStateChangeAsync(Room room, string newState)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchRoomStateChangeAsync(Room room, string newState)
     {
-        if (StateHandlers == null) return;
+        if (StateHandlers == null) return false;
 
         var context = new RoomStateContext(room, newState);
         var adapters = StateHandlers.Select(h => new RoomStateHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发用户加入到所有处理器
     /// </summary>
-    public async Task DispatchUserJoinAsync(Room room, User user)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchUserJoinAsync(Room room, User user)
     {
-        if (UserJoinHandlers == null) return;
+        if (UserJoinHandlers == null) return false;
 
         var context = new UserEventContext(room, user);
         var adapters = UserJoinHandlers.Select(h => new UserJoinHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发用户离开到所有处理器
     /// </summary>
-    public async Task DispatchUserLeaveAsync(Room room, User user)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchUserLeaveAsync(Room room, User user)
     {
-        if (UserLeaveHandlers == null) return;
+        if (UserLeaveHandlers == null) return false;
 
         var context = new UserEventContext(room, user);
         var adapters = UserLeaveHandlers.Select(h => new UserLeaveHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发游戏开始请求到所有处理器 - 插件可以抛出异常来阻止开始
     /// </summary>
-    public async Task DispatchRequestStartAsync(Room room, User user)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchRequestStartAsync(Room room, User user)
     {
-        if (RequestStartHandlers == null) return;
+        if (RequestStartHandlers == null) return false;
 
         var context = new RequestStartContext(room, user);
         var adapters = RequestStartHandlers.Select(h => new RequestStartHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发选歌到所有处理器
     /// </summary>
-    public async Task DispatchSelectChartAsync(Room room, User user, ChartInfo chart)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchSelectChartAsync(Room room, User user, ChartInfo chart)
     {
-        if (SelectChartHandlers == null) return;
+        if (SelectChartHandlers == null) return false;
 
         var context = new SelectChartContext(room, user, chart);
         var adapters = SelectChartHandlers.Select(h => new SelectChartHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发循环模式变化到所有处理器
     /// </summary>
-    public async Task DispatchCycleModeChangeAsync(Room room, User user, bool cycleEnabled)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchCycleModeChangeAsync(Room room, User user, bool cycleEnabled)
     {
-        if (CycleModeChangeHandlers == null) return;
+        if (CycleModeChangeHandlers == null) return false;
 
         var context = new CycleModeChangeContext(room, user, cycleEnabled);
         var adapters = CycleModeChangeHandlers.Select(h => new CycleModeChangeHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发加入房间请求到所有处理器 - 插件可以修改目标房间或抛出异常阻止
     /// </summary>
-    public async Task<RoomId> DispatchJoinRoomRequestAsync(User user, RoomId roomId, bool monitor)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchJoinRoomRequestAsync(User user, RoomId roomId, bool monitor)
     {
-        if (JoinRoomRequestHandlers == null) return roomId;
+        if (JoinRoomRequestHandlers == null) return false;
 
         var context = new JoinRoomRequestContext(user, roomId, monitor);
         var adapters = JoinRoomRequestHandlers.Select(h => new JoinRoomRequestHandlerAdapter(h));
-        
-        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
 
-        // 返回可能被插件修改的目标房间 ID
-        return context.TargetRoomId;
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
     /// 分发创建房间请求到所有处理器 - 插件可以抛出异常阻止创建
     /// </summary>
-    public async Task DispatchCreateRoomRequestAsync(User user, RoomId roomId)
+    /// <returns>如果插件已处理返回 true，否则返回 false</returns>
+    public async Task<bool> DispatchCreateRoomRequestAsync(User user, RoomId roomId)
     {
-        if (CreateRoomRequestHandlers == null) return;
+        if (CreateRoomRequestHandlers == null) return false;
 
         var context = new CreateRoomRequestContext(user, roomId);
         var adapters = CreateRoomRequestHandlers.Select(h => new CreateRoomRequestHandlerAdapter(h));
-        
+
         await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+        return context.IsHandled;
     }
 
     /// <summary>
@@ -393,8 +406,9 @@ public class PluginManager : IDisposable
         if (AuthenticationHandlers == null) return userInfo;
 
         var context = new AuthenticationContext(token, userInfo, sessionId);
-        var adapters = AuthenticationHandlers.Select(h => new AuthenticationHandlerAdapter(h)).Cast<IPipelineHandler<AuthenticationContext>>();
-        
+        var adapters = AuthenticationHandlers.Select(h => new AuthenticationHandlerAdapter(h))
+            .Cast<IPipelineHandler<AuthenticationContext>>();
+
         await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
 
         // 返回可能被插件修改的用户信息
@@ -437,10 +451,10 @@ public class PluginLoadInfo
 {
     /// <summary>插件文件路径</summary>
     public required string Path { get; init; }
-    
+
     /// <summary>插件程序集</summary>
     public required Assembly Assembly { get; init; }
-    
+
     /// <summary>加载时间</summary>
     public DateTime LoadTime { get; init; }
 }

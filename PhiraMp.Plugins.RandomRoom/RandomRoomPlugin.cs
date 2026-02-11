@@ -1,4 +1,6 @@
 using System.ComponentModel.Composition;
+using PhiraMp.Core;
+using PhiraMp.Server;
 using PhiraMp.Server.Models;
 using PhiraMp.Server.Plugins;
 
@@ -15,6 +17,7 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
 {
     private IPluginLogger _logger = null!;
     private IPluginAPI _api = null!;
+    private PluginContext _context = null!;
     private IPluginConfig _config = null!;
 
     // 保留的房间名列表（不能创建这些房间）
@@ -29,6 +32,7 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
     {
         _logger = context.Logger;
         _api = context.API;
+        _context = context;
         _config = context.Config;
 
         // 加载配置
@@ -69,7 +73,7 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
     /// </summary>
     public async Task HandleJoinRoomRequestAsync(JoinRoomRequestContext context)
     {
-        var requestedRoomName = context.OriginalRoomId.Value;
+        var requestedRoomName = context.RoomId.Value;
 
         // 检查是否是保留房间名
         if (_reservedRoomNames.Contains(requestedRoomName))
@@ -82,10 +86,12 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             // 1. 房间未锁定
             // 2. 房间处于选歌状态（SelectChart），这样用户可以加入
             // 3. 房间名不是保留名称
-            var availableRooms = allRooms
-                .Where(r => r is { Locked: false, State: InternalRoomState.SelectChart } &&
-                            !_reservedRoomNames.Contains(r.Id.Value))
-                .ToList();
+            // 4. 房间未满
+            var availableRooms = allRooms.Where(r =>
+                r is { Locked: false, State: InternalRoomState.SelectChart } &&
+                !_reservedRoomNames.Contains(r.Id.Value) &&
+                r.GetAllUsers().Count < _context.ServerState.Config.RoomMaxPlayers
+            ).ToList();
 
             if (availableRooms.Count == 0)
             {
@@ -97,14 +103,33 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             var random = new Random();
             var randomRoom = availableRooms[random.Next(availableRooms.Count)];
 
-            _logger.Info($"重定向到房间 '{randomRoom.Id.Value}' (当前 {randomRoom.GetAllUsers().Count} 人)");
-            await _api.SendPrivateMessageAsync(context.User, $"您已被重定向到房间 {randomRoom.Id.Value}");
-
-            // 修改目标房间 ID
-            context.TargetRoomId = randomRoom.Id;
+            _logger.Info($"将重定向到房间 '{randomRoom.Id.Value}' (当前 {randomRoom.GetAllUsers().Count} 人)");
+            if (context.Monitor && !context.User.CanMonitor())
+                throw new Exception("不能监听房间，因为您没有权限。");
+            if (!randomRoom.AddUser(context.User, context.Monitor))
+                throw new Exception("不巧，这个房间可能刚刚好满了，你可以再试一次。");
+            
+            context.User.IsMonitor = context.Monitor;
+            if (context.Monitor && !randomRoom.Live)
+            {
+                randomRoom.Live = true;
+                Logger.Info($"Room {context.RoomId.Value} goes live");
+            }
+            
+            await randomRoom.BroadcastAsync(new OnJoinRoomCommand(context.User.ToInfo()));
+            await randomRoom.SendAsync(new JoinRoomMessage(context.User.Id, context.User.Name));
+            context.User.Room = randomRoom;
+            
+            await _api.SendPrivateMessageAsync(context.User, $"您被重定向到了房间 '{randomRoom.Id.Value}'");
+            
+            await _api.SendCommandAsync(context.User,
+                new JoinRoomResponseCommand(new JoinRoomResponse(
+                    randomRoom.GetClientRoomState(),
+                    randomRoom.GetAllUsers().Select(u => u.ToInfo()).ToList(),
+                    randomRoom.Live)));
+            
+            context.IsHandled = true;
         }
-
-        await Task.CompletedTask;
     }
 
     /// <summary>
