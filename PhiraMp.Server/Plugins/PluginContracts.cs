@@ -105,6 +105,16 @@ public interface ICreateRoomRequestHandler
 }
 
 /// <summary>
+/// 鉴权处理器接口 - 导出此接口以拦截鉴权流程
+/// 使用 [Export(typeof(IAuthenticationHandler))] 注册
+/// 插件可以验证、修改用户信息或抛出异常来阻止鉴权
+/// </summary>
+public interface IAuthenticationHandler
+{
+    Task HandleAuthenticationAsync(AuthenticationContext context);
+}
+
+/// <summary>
 /// 插件上下文 - 在插件初始化时提供
 /// </summary>
 public class PluginContext
@@ -331,6 +341,28 @@ public class CreateRoomRequestContext : BasePipelineContext
     {
         User = user;
         RoomId = roomId;
+    }
+}
+
+/// <summary>
+/// 鉴权事件上下文
+/// </summary>
+public class AuthenticationContext : BasePipelineContext
+{
+    /// <summary>鉴权令牌</summary>
+    public string Token { get; }
+    
+    /// <summary>用户信息（从 Phira 服务器获取，插件可以修改）</summary>
+    public PhiraUserInfo UserInfo { get; set; }
+    
+    /// <summary>会话 ID</summary>
+    public Guid SessionId { get; }
+    
+    public AuthenticationContext(string token, PhiraUserInfo userInfo, Guid sessionId)
+    {
+        Token = token;
+        UserInfo = userInfo;
+        SessionId = sessionId;
     }
 }
 

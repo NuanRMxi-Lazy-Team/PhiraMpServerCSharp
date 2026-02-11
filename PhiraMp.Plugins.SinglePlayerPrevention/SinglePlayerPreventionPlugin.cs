@@ -31,10 +31,10 @@ public class SinglePlayerPreventionPlugin : IPluginModule, IRequestStartHandler
         _context = context;
         
         // 加载配置
-        _config = context.Config.Load("single_player_prevention.yml", new PluginConfig());
+        _config = await context.Config.LoadAsync("single_player_prevention.yml", new PluginConfig());
         
         context.Logger.Info($"已初始化 - 要求至少 {_config.MinPlayers} 名玩家才能开始游戏");
-        await Task.CompletedTask;
+        //await Task.CompletedTask;
     }
 
     public Task ShutdownAsync()
@@ -57,10 +57,11 @@ public class SinglePlayerPreventionPlugin : IPluginModule, IRequestStartHandler
             // 向房间发送提示消息
             await _context!.API.SendRoomMessageAsync(
                 context.Room, 
-                $"⚠至少需要 {_config.MinPlayers} 名玩家才能开始游戏（当前 {playerCount} 名）");
+                $"至少需要 {_config.MinPlayers} 名玩家才能开始游戏（当前 {playerCount} 名）");
             
             throw new Exception(message);
         }
+        context.IsHandled = true;
         
         await Task.CompletedTask;
     }

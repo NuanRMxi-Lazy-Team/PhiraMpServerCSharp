@@ -51,6 +51,9 @@ public class PluginManager : IDisposable
     [ImportMany(typeof(ICreateRoomRequestHandler))]
     public IEnumerable<ICreateRoomRequestHandler>? CreateRoomRequestHandlers { get; set; }
 
+    [ImportMany(typeof(IAuthenticationHandler))]
+    public IEnumerable<IAuthenticationHandler>? AuthenticationHandlers { get; set; }
+
     public PluginManager(ServerState serverState, string pluginDirectory = "plugins")
     {
         _serverState = serverState;
@@ -379,6 +382,23 @@ public class PluginManager : IDisposable
         var adapters = CreateRoomRequestHandlers.Select(h => new CreateRoomRequestHandlerAdapter(h));
         
         await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+    }
+
+    /// <summary>
+    /// 分发鉴权到所有处理器 - 插件可以验证、修改用户信息或抛出异常阻止鉴权
+    /// </summary>
+    /// <returns>可能被插件修改的用户信息</returns>
+    public async Task<PhiraUserInfo> DispatchAuthenticationAsync(string token, PhiraUserInfo userInfo, Guid sessionId)
+    {
+        if (AuthenticationHandlers == null) return userInfo;
+
+        var context = new AuthenticationContext(token, userInfo, sessionId);
+        var adapters = AuthenticationHandlers.Select(h => new AuthenticationHandlerAdapter(h)).Cast<IPipelineHandler<AuthenticationContext>>();
+        
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+
+        // 返回可能被插件修改的用户信息
+        return context.UserInfo;
     }
 
     public void Dispose()

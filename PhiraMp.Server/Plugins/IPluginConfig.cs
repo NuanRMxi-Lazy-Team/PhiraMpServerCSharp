@@ -14,6 +14,11 @@ public interface IPluginConfig
     T Load<T>(string fileName, T defaultValue) where T : class, new();
     
     /// <summary>
+    /// 异步加载配置文件，如果不存在则创建默认配置
+    /// </summary>
+    Task<T> LoadAsync<T>(string fileName, T defaultValue) where T : class, new();
+    
+    /// <summary>
     /// 保存配置到文件
     /// </summary>
     void Save<T>(string fileName, T config) where T : class;
@@ -58,6 +63,35 @@ public class PluginConfig : IPluginConfig
             }
 
             var yaml = File.ReadAllText(filePath);
+            var deserializer = new DeserializerBuilder()
+                .WithNamingConvention(UnderscoredNamingConvention.Instance)
+                .Build();
+            
+            var config = deserializer.Deserialize<T>(yaml);
+            _logger.Debug($"已加载配置文件: {fileName}");
+            return config ?? defaultValue;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, $"加载配置文件失败: {fileName}");
+            return defaultValue;
+        }
+    }
+    
+    public async Task<T> LoadAsync<T>(string fileName, T defaultValue) where T : class, new()
+    {
+        var filePath = Path.Combine(_configDirectory, fileName);
+        
+        try
+        {
+            if (!File.Exists(filePath))
+            {
+                _logger.Info($"配置文件不存在，创建默认配置: {fileName}");
+                Save(fileName, defaultValue);
+                return defaultValue;
+            }
+
+            var yaml = await File.ReadAllTextAsync(filePath);
             var deserializer = new DeserializerBuilder()
                 .WithNamingConvention(UnderscoredNamingConvention.Instance)
                 .Build();

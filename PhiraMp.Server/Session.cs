@@ -155,7 +155,7 @@ public class Session : IDisposable
                 }
                 else
                 {
-                    Logger.Warning($"Packet before authentication, ignoring: {cmd.GetType().Name}");
+                    Logger.Warning($"数据包早于鉴权，忽略: {cmd.GetType().Name}");
                     return null;
                 }
             }
@@ -186,6 +186,21 @@ public class Session : IDisposable
                 {
                     // Cache hit - use cached result
                     var userInfo = cached.info;
+                    
+                    // Allow plugins to validate, modify user info, or block authentication (even for cached)
+                    if (Server.PluginManager != null)
+                    {
+                        try
+                        {
+                            userInfo = await Server.PluginManager.DispatchAuthenticationAsync(token, userInfo, Id);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Warning($"Cached authentication blocked by plugin: {ex.Message}");
+                            return new AuthenticateResponseCommand($"Authentication rejected: {ex.Message}");
+                        }
+                    }
+                    
                     return ProcessAuthenticatedUser(userInfo);
                 }
                 else
@@ -211,6 +226,20 @@ public class Session : IDisposable
 
             // Cache the result
             AuthTokenCache[token] = (userInfo2, DateTime.UtcNow.Ticks + AuthCacheTtlTicks);
+
+            // Allow plugins to validate, modify user info, or block authentication
+            if (Server.PluginManager != null)
+            {
+                try
+                {
+                    userInfo2 = await Server.PluginManager.DispatchAuthenticationAsync(token, userInfo2, Id);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning($"Authentication blocked by plugin: {ex.Message}");
+                    return new AuthenticateResponseCommand($"Authentication rejected: {ex.Message}");
+                }
+            }
 
             Logger.Debug($"Session {Id} <- User: {userInfo2.Id}, Name: {userInfo2.Name}");
             return ProcessAuthenticatedUser(userInfo2);
