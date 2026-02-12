@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using PhiraMp.Server.Console;
 using PhiraMp.Server.Models;
 using PhiraMp.Server.Plugins;
 
@@ -19,6 +20,9 @@ public class PhiraMpServer : IDisposable
 
         config ??= ServerConfig.Load();
         _state = new ServerState(config);
+
+        // Initialize console command system
+        _state.ConsoleCommandSystem = new ConsoleCommandSystem();
 
         // Initialize plugin manager
         _state.PluginManager = new PluginManager(_state);
@@ -42,6 +46,13 @@ public class PhiraMpServer : IDisposable
 
         _listener.Start();
         Logger.Info($"Server listening on port {((IPEndPoint)_listener.LocalEndpoint).Port}");
+        
+        // 在启动命令系统之前输出提示信息
+        Logger.Info("控制台命令系统已启动");
+        Logger.Info("提示: 使用 TAB 键自动补全命令，输入 'help' 查看所有命令");
+
+        // 插件加载完成后，启动控制台命令系统
+        _state.ConsoleCommandSystem?.Start(_cts.Token);
 
         while (!_cts.Token.IsCancellationRequested)
         {
@@ -122,6 +133,16 @@ public class PhiraMpServer : IDisposable
         _cts.Cancel();
         _listener.Stop();
     }
+
+    /// <summary>
+    /// 获取服务器状态（供控制台命令使用）
+    /// </summary>
+    public ServerState GetState() => _state;
+
+    /// <summary>
+    /// 获取取消令牌源（供控制台命令使用）
+    /// </summary>
+    public CancellationTokenSource GetCancellationTokenSource() => _cts;
 
     public void Dispose()
     {

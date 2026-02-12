@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>true</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <Version>1.0.0.0</Version>
     <AssemblyName>PhiraMp.Server</AssemblyName>
     <RootNamespace>PhiraMp.Server</RootNamespace>
   </PropertyGroup>

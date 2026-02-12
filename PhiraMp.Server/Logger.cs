@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Text;
 using System.Threading.Channels;
+using PhiraMp.Server.Console;
 
 namespace PhiraMp.Server;
 
@@ -125,7 +126,7 @@ public static class Logger
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Logger thread error: {ex.Message}");
+            System.Console.Error.WriteLine($"Logger thread error: {ex.Message}");
         }
     }
     
@@ -133,31 +134,34 @@ public static class Logger
     {
         try
         {
-            // Use cached StringBuilder to reduce allocations
-            lock (_stringBuilder)
+            ConsoleUi.WriteLinePreservingInput(() =>
             {
-                _stringBuilder.Clear();
-                
-                // Format timestamp more efficiently
-                var dt = new DateTime(entry.Timestamp);
-                _stringBuilder.Append('[');
-                _stringBuilder.Append(dt.ToString("yyyy-MM-dd HH:mm:ss"));
-                _stringBuilder.Append("] ");
-                
-                var (color, prefix) = GetLevelDisplay(entry.Level);
-                
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.Write(_stringBuilder.ToString());
-                
-                Console.ForegroundColor = color;
-                Console.Write(prefix);
-                Console.Write(" ");
-                
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.WriteLine(entry.Message);
-                
-                Console.ResetColor();
-            }
+                // Use cached StringBuilder to reduce allocations
+                lock (_stringBuilder)
+                {
+                    _stringBuilder.Clear();
+
+                    // Format timestamp more efficiently
+                    var dt = new DateTime(entry.Timestamp);
+                    _stringBuilder.Append('[');
+                    _stringBuilder.Append(dt.ToString("yyyy-MM-dd HH:mm:ss"));
+                    _stringBuilder.Append("] ");
+
+                    var (color, prefix) = GetLevelDisplay(entry.Level);
+
+                    System.Console.ForegroundColor = ConsoleColor.Gray;
+                    System.Console.Write(_stringBuilder.ToString());
+
+                    System.Console.ForegroundColor = color;
+                    System.Console.Write(prefix);
+                    System.Console.Write(" ");
+
+                    System.Console.ForegroundColor = ConsoleColor.White;
+                    System.Console.WriteLine(entry.Message);
+
+                    System.Console.ResetColor();
+                }
+            });
         }
         catch
         {

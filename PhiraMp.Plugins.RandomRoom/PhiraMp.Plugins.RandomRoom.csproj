@@ -4,24 +4,23 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <Version>0.0.1.0</Version>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="System.ComponentModel.Composition" Version="10.0.2" />
-    <PackageReference Include="YamlDotNet" Version="16.2.1" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 引用服务器和核心 DLL，不复制到输出目录 -->
-    <Reference Include="PhiraMp.Server">
-      <HintPath>..\PhiraMp.Server\bin\Debug\net10.0\PhiraMp.Server.dll</HintPath>
+    <ProjectReference Include="..\PhiraMp.Core\PhiraMp.Core.csproj">
       <Private>false</Private>
-    </Reference>
-    <Reference Include="PhiraMp.Core">
-      <HintPath>..\PhiraMp.Core\bin\Debug\net10.0\PhiraMp.Core.dll</HintPath>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+    <ProjectReference Include="..\PhiraMp.Server\PhiraMp.Server.csproj">
       <Private>false</Private>
-    </Reference>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
   </ItemGroup>
 
 </Project>

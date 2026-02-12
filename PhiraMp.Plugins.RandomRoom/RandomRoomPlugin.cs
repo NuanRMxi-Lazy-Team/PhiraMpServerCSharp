@@ -56,7 +56,7 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
         };
 
         // 加载或创建配置
-        var config = _config.Load("random_room.yml", defaultConfig);
+        var config = await _config.LoadAsync("random_room.yml", defaultConfig);
 
         // 设置变量
         _reservedRoomNames = new HashSet<string>(
@@ -64,8 +64,6 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             StringComparer.OrdinalIgnoreCase);
         _redirectMessageEnabled = config.RedirectMessageEnabled;
         _redirectMessage = config.RedirectMessage;
-
-        await Task.CompletedTask;
     }
 
     /// <summary>

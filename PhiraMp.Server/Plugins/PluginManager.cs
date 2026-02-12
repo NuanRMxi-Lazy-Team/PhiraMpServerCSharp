@@ -2,6 +2,7 @@ using System.ComponentModel.Composition;
 using System.ComponentModel.Composition.Hosting;
 using System.Reflection;
 using PhiraMp.Core;
+using PhiraMp.Server.Console;
 using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server.Plugins;
@@ -52,6 +53,9 @@ public class PluginManager : IDisposable
     [ImportMany(typeof(IAuthenticationHandler))]
     public IEnumerable<IAuthenticationHandler>? AuthenticationHandlers { get; set; }
 
+    [ImportMany(typeof(IConsoleCommandHandler))]
+    public IEnumerable<IConsoleCommandHandler>? ConsoleCommandHandlers { get; set; }
+
     public PluginManager(ServerState serverState, string pluginDirectory = "plugins")
     {
         _serverState = serverState;
@@ -92,6 +96,9 @@ public class PluginManager : IDisposable
 
             // 初始化所有插件模块
             await InitializePluginModulesAsync();
+
+            // 注册插件的控制台命令
+            RegisterConsoleCommands();
 
             // 打印加载信息
             LogPluginLoadSummary();
@@ -165,6 +172,27 @@ public class PluginManager : IDisposable
             catch (Exception ex)
             {
                 Logger.Error(ex, $"初始化插件失败 {module.GetType().Name}:");
+            }
+        }
+    }
+
+    /// <summary>
+    /// 注册插件的控制台命令
+    /// </summary>
+    private void RegisterConsoleCommands()
+    {
+        if (ConsoleCommandHandlers == null || _serverState.ConsoleCommandSystem == null) return;
+
+        foreach (var handler in ConsoleCommandHandlers)
+        {
+            try
+            {
+                handler.RegisterCommands(_serverState.ConsoleCommandSystem);
+                Logger.Info($"已注册控制台命令处理器: {handler.GetType().Name}");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"注册控制台命令失败 {handler.GetType().Name}:");
             }
         }
     }

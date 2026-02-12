@@ -1,5 +1,6 @@
-﻿using System.Collections.Concurrent;
+﻿﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
+using PhiraMp.Server.Console;
 using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Server.Models;
@@ -12,6 +13,7 @@ public class ServerState
     public ConcurrentDictionary<string, Room> Rooms { get; } = new();
     public Channel<Guid> LostConnectionChannel { get; }
     public PluginManager? PluginManager { get; set; }
+    public ConsoleCommandSystem? ConsoleCommandSystem { get; set; }
 
     public ServerState(ServerConfig config)
     {
