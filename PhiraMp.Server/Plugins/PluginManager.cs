@@ -53,6 +53,12 @@ public class PluginManager : IDisposable
     [ImportMany(typeof(IAuthenticationHandler))]
     public IEnumerable<IAuthenticationHandler>? AuthenticationHandlers { get; set; }
 
+    [ImportMany(typeof(IUserConnectHandler))]
+    public IEnumerable<IUserConnectHandler>? UserConnectHandlers { get; set; }
+
+    [ImportMany(typeof(IUserDisconnectHandler))]
+    public IEnumerable<IUserDisconnectHandler>? UserDisconnectHandlers { get; set; }
+
     [ImportMany(typeof(IConsoleCommandHandler))]
     public IEnumerable<IConsoleCommandHandler>? ConsoleCommandHandlers { get; set; }
 
@@ -81,11 +87,29 @@ public class PluginManager : IDisposable
             // 创建 MEF 目录
             var catalog = new AggregateCatalog();
 
-            var dllFiles = Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly);
-            foreach (var dllFile in dllFiles)
+            // ── 方式一：顶层平铺 DLL（无私有依赖的简单插件，向后兼容）──────────────
+            foreach (var dllFile in Directory.GetFiles(_pluginDirectory, "*.dll", SearchOption.TopDirectoryOnly))
             {
-                if (!AddPluginToCatalog(dllFile, catalog))
-                    continue;
+                _ = AddPluginToCatalog(dllFile, catalog);
+            }
+
+            // ── 方式二：子目录插件（含私有 NuGet 依赖，如 ASP.NET 插件）───────────
+            // 规范：子目录名与主 DLL 文件名相同，目录内需有同名 .deps.json
+            // plugins/
+            //   MyApiPlugin/
+            //     MyApiPlugin.dll          ← 主 DLL（与文件夹同名）
+            //     MyApiPlugin.deps.json    ← EnableDynamicLoading=true 自动生成
+            //     Swashbuckle.AspNetCore.dll
+            //     ...（其余私有 NuGet 依赖）
+            foreach (var subDir in Directory.GetDirectories(_pluginDirectory))
+            {
+                // 跳过框架保留目录
+                var dirName = Path.GetFileName(subDir);
+                if (dirName is "configs" or "data") continue;
+
+                var mainDll = Path.Combine(subDir, $"{dirName}.dll");
+                if (File.Exists(mainDll))
+                    _ = AddPluginToCatalog(mainDll, catalog);
             }
 
             // 创建组合容器
@@ -113,13 +137,15 @@ public class PluginManager : IDisposable
     }
 
     /// <summary>
-    /// 将插件添加到目录中
+    /// 将插件添加到目录中（使用专属 ALC，支持私有依赖隔离）
     /// </summary>
     private bool AddPluginToCatalog(string dllFile, AggregateCatalog catalog)
     {
         try
         {
-            var assembly = Assembly.LoadFrom(dllFile);
+            // 每个插件独占一个 PluginLoadContext，私有 NuGet 依赖互不干扰
+            var loadContext = new PluginLoadContext(dllFile);
+            var assembly = loadContext.LoadFromAssemblyPath(dllFile);
             var assemblyCatalog = new AssemblyCatalog(assembly);
             catalog.Catalogs.Add(assemblyCatalog);
 
@@ -127,6 +153,7 @@ public class PluginManager : IDisposable
             {
                 Path = dllFile,
                 Assembly = assembly,
+                LoadContext = loadContext,
                 LoadTime = DateTime.UtcNow
             };
 
@@ -272,6 +299,14 @@ public class PluginManager : IDisposable
 
             // 清理容器
             _container?.Dispose();
+
+            // 卸载各插件专属 ALC，释放私有程序集内存（collectible ALC 由 GC 异步回收）
+            foreach (var info in _loadedPlugins.Values)
+            {
+                try { info.LoadContext?.Unload(); }
+                catch { /* Unload 是异步 GC 触发，此处异常可安全忽略 */ }
+            }
+
             _loadedPlugins.Clear();
 
             // 清理插件服务
@@ -443,6 +478,33 @@ public class PluginManager : IDisposable
         return context.UserInfo;
     }
 
+    /// <summary>
+    /// 分发用户连接到所有处理器 - 用户完成鉴权后触发，插件可抛出异常拒绝连接
+    /// </summary>
+    public async Task DispatchUserConnectAsync(User user, Guid sessionId, bool isReconnect)
+    {
+        if (UserConnectHandlers == null) return;
+
+        var context = new UserConnectContext(user, sessionId, isReconnect);
+        var adapters = UserConnectHandlers.Select(h => new UserConnectHandlerAdapter(h))
+            .Cast<IPipelineHandler<UserConnectContext>>();
+
+        await PipelineExecutor.ExecuteWithValidationAsync(adapters, context);
+    }
+
+    /// <summary>
+    /// 分发用户断开连接到所有处理器 - 重连超时后彻底离线时触发
+    /// </summary>
+    public async Task DispatchUserDisconnectAsync(User user)
+    {
+        if (UserDisconnectHandlers == null) return;
+
+        var context = new UserDisconnectContext(user);
+        var adapters = UserDisconnectHandlers.Select(h => new UserDisconnectHandlerAdapter(h));
+
+        await PipelineExecutor.ExecuteAsync(adapters, context);
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
@@ -482,6 +544,9 @@ public class PluginLoadInfo
 
     /// <summary>插件程序集</summary>
     public required Assembly Assembly { get; init; }
+
+    /// <summary>插件专属 ALC（isCollectible=true，热重载时可卸载）</summary>
+    public PluginLoadContext? LoadContext { get; init; }
 
     /// <summary>加载时间</summary>
     public DateTime LoadTime { get; init; }

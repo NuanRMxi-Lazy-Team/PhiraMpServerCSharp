@@ -201,7 +201,7 @@ public class Session : IDisposable
                         }
                     }
                     
-                    return ProcessAuthenticatedUser(userInfo);
+                    return await ProcessAuthenticatedUserAsync(userInfo);
                 }
                 else
                 {
@@ -242,7 +242,7 @@ public class Session : IDisposable
             }
 
             Logger.Debug($"Session {Id} <- User: {userInfo2.Id}, Name: {userInfo2.Name}");
-            return ProcessAuthenticatedUser(userInfo2);
+            return await ProcessAuthenticatedUserAsync(userInfo2);
         }
         catch (OperationCanceledException)
         {
@@ -256,14 +256,16 @@ public class Session : IDisposable
         }
     }
 
-    private ServerCommand ProcessAuthenticatedUser(PhiraUserInfo userInfo)
+    private async Task<ServerCommand> ProcessAuthenticatedUserAsync(PhiraUserInfo userInfo)
     {
+        bool isReconnect;
         User? user;
         if (Server.Users.TryGetValue(userInfo.Id, out user))
         {
             Logger.Info($"User {userInfo.Id} reconnect");
             User = user;
             user.SetSession(this);
+            isReconnect = true;
         }
         else
         {
@@ -271,9 +273,28 @@ public class Session : IDisposable
             User = user;
             user.SetSession(this);
             Server.Users[userInfo.Id] = user;
+            isReconnect = false;
         }
 
         _authenticated = true;
+
+        // Dispatch connect event - plugins can throw to reject the connection
+        if (Server.PluginManager != null)
+        {
+            try
+            {
+                await Server.PluginManager.DispatchUserConnectAsync(user, Id, isReconnect);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"User {userInfo.Id} connect rejected by plugin: {ex.Message}");
+                // Roll back new user registration if this was a fresh connection
+                if (!isReconnect)
+                    Server.Users.TryRemove(userInfo.Id, out _);
+                _authenticated = false;
+                return new AuthenticateResponseCommand($"Connection rejected: {ex.Message}");
+            }
+        }
 
         var roomState = user.Room?.ClientState(user);
         return new AuthenticateResponseCommand(user.ToInfo(), roomState);

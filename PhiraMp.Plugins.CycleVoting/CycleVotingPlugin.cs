@@ -72,8 +72,6 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
                 room,
                 $"{user.Name} 投票: {chart.Name} (共 {state.VoteCount} 票)");
         }
-
-        await Task.CompletedTask;
     }
 
     /// <summary>
@@ -102,12 +100,9 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
 
             // 撤销所有非房主用户的假房主权限
             var users = room.GetUsers();
-            foreach (var user in users)
+            foreach (var user in users.Where(user => !room.IsHost(user)))
             {
-                if (!room.IsHost(user))
-                {
-                    await user.TrySendAsync(new ChangeHostCommand(false));
-                }
+                await user.TrySendAsync(new ChangeHostCommand(false));
             }
 
             // 清除投票，为下一轮做准备
@@ -140,12 +135,9 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
         {
             // 授予所有非房主用户假房主权限，以便他们可以选歌
             var users = room.GetUsers();
-            foreach (var user in users)
+            foreach (var user in users.Where(user => !room.IsHost(user)))
             {
-                if (!room.IsHost(user))
-                {
-                    await user.TrySendAsync(new ChangeHostCommand(true));
-                }
+                await user.TrySendAsync(new ChangeHostCommand(true));
             }
 
             _context?.Logger.Info($"房间 {room.Id} 已启用循环投票");
@@ -155,12 +147,9 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
         {
             // 撤销假房主权限
             var users = room.GetUsers();
-            foreach (var user in users)
+            foreach (var user in users.Where(user => !room.IsHost(user)))
             {
-                if (!room.IsHost(user))
-                {
-                    await user.TrySendAsync(new ChangeHostCommand(false));
-                }
+                await user.TrySendAsync(new ChangeHostCommand(false));
             }
 
             state.ClearVotes();
@@ -188,12 +177,9 @@ public class CycleVotingPlugin : IPluginModule, ISelectChartHandler, IRequestSta
         if (context.NewState == "SelectChart")
         {
             var users = room.GetUsers();
-            foreach (var user in users)
+            foreach (var user in users.Where(user => !room.IsHost(user)))
             {
-                if (!room.IsHost(user))
-                {
-                    await user.TrySendAsync(new ChangeHostCommand(true));
-                }
+                await user.TrySendAsync(new ChangeHostCommand(true));
             }
 
             await _context!.API.SendRoomMessageAsync(

@@ -71,18 +71,23 @@ public class User
         Logger.Warning($"User {Id} dangling");
 
         var room = Room;
-        if (room != null)
+        if (room?.State is InternalRoomState.Playing)
         {
-            if (room.State is InternalRoomState.Playing)
+            Logger.Warning($"User {Id} lost connection while playing, aborting");
+            Server.Users.TryRemove(Id, out _);
+
+            // Notify plugins that the user has disconnected
+            if (Server.PluginManager != null)
             {
-                Logger.Warning($"User {Id} lost connection while playing, aborting");
-                Server.Users.TryRemove(Id, out _);
-                if (await room.OnUserLeaveAsync(this))
-                {
-                    Server.Rooms.TryRemove(room.Id.Value, out _);
-                }
-                return;
+                try { await Server.PluginManager.DispatchUserDisconnectAsync(this); }
+                catch (Exception ex) { Logger.Error(ex, $"Error dispatching disconnect for user {Id}:"); }
             }
+
+            if (await room.OnUserLeaveAsync(this))
+            {
+                Server.Rooms.TryRemove(room.Id.Value, out _);
+            }
+            return;
         }
 
         var dangleMark = new object();
@@ -96,6 +101,13 @@ public class User
 
             if (ReferenceEquals(DangleMark, dangleMark))
             {
+                // Notify plugins that the user has disconnected (reconnect timeout elapsed)
+                if (server.PluginManager != null)
+                {
+                    try { await server.PluginManager.DispatchUserDisconnectAsync(this); }
+                    catch (Exception ex) { Logger.Error(ex, $"Error dispatching disconnect for user {userId}:"); }
+                }
+
                 var currentRoom = Room;
                 if (currentRoom != null)
                 {
@@ -104,6 +116,11 @@ public class User
                     {
                         server.Rooms.TryRemove(currentRoom.Id.Value, out _);
                     }
+                }
+                else
+                {
+                    // No room — still remove from users
+                    server.Users.TryRemove(userId, out _);
                 }
             }
         });

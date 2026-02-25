@@ -62,7 +62,5 @@ public class SinglePlayerPreventionPlugin : IPluginModule, IRequestStartHandler
             throw new Exception(message);
         }
         context.IsHandled = true;
-        
-        await Task.CompletedTask;
     }
 }

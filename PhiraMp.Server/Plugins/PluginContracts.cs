@@ -115,6 +115,25 @@ public interface IAuthenticationHandler
 }
 
 /// <summary>
+/// 用户连接处理器接口 - 用户完成鉴权后正式加入服务器时触发（含重连）
+/// 使用 [Export(typeof(IUserConnectHandler))] 注册
+/// 插件可以抛出异常来拒绝/踢出用户
+/// </summary>
+public interface IUserConnectHandler
+{
+    Task HandleUserConnectAsync(UserConnectContext context);
+}
+
+/// <summary>
+/// 用户断开连接处理器接口 - 用户重连超时后彻底离线时触发
+/// 使用 [Export(typeof(IUserDisconnectHandler))] 注册
+/// </summary>
+public interface IUserDisconnectHandler
+{
+    Task HandleUserDisconnectAsync(UserDisconnectContext context);
+}
+
+/// <summary>
 /// 插件上下文 - 在插件初始化时提供
 /// </summary>
 public class PluginContext
@@ -362,3 +381,38 @@ public class AuthenticationContext : BasePipelineContext
     }
 }
 
+/// <summary>
+/// 用户连接事件上下文 - 用户完成鉴权后触发
+/// </summary>
+public class UserConnectContext : BasePipelineContext
+{
+    /// <summary>连接的用户对象</summary>
+    public User User { get; }
+
+    /// <summary>当前会话 ID</summary>
+    public Guid SessionId { get; }
+
+    /// <summary>是否为重新连接（true = 断线重连，false = 首次连接）</summary>
+    public bool IsReconnect { get; }
+
+    public UserConnectContext(User user, Guid sessionId, bool isReconnect)
+    {
+        User = user;
+        SessionId = sessionId;
+        IsReconnect = isReconnect;
+    }
+}
+
+/// <summary>
+/// 用户断开连接事件上下文 - 重连超时后彻底离线时触发
+/// </summary>
+public class UserDisconnectContext : BasePipelineContext
+{
+    /// <summary>断开连接的用户对象</summary>
+    public User User { get; }
+
+    public UserDisconnectContext(User user)
+    {
+        User = user;
+    }
+}

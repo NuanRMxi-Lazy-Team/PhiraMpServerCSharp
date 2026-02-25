@@ -13,7 +13,7 @@
 
   <ItemGroup>
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
-    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.2" />
+    <PackageReference Include="System.ComponentModel.Composition" Version="10.0.3" />
     <!-- 引用PhiraMp.Core -->
     <ProjectReference Include="..\PhiraMp.Core\PhiraMp.Core.csproj" />
   </ItemGroup>
