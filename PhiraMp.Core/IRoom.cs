@@ -62,7 +62,7 @@ public interface IRoom
     /// <summary>检查指定用户是否有权选歌，无权则抛出异常</summary>
     void CheckCanSelectChart(IUser user);
 
-    /// <summary>设置循环换庄模式</summary>
+    /// <summary>设置循环房主模式</summary>
     void SetCycle(bool cycle);
 
     /// <summary>向房间广播状态变化通知（包含插件回调）</summary>
