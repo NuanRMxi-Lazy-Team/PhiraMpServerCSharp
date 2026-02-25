@@ -13,56 +13,56 @@ public interface IPluginAPI
     /// <summary>
     /// 获取所有活跃房间
     /// </summary>
-    IEnumerable<Room> GetAllRooms();
+    IEnumerable<IRoom> GetAllRooms();
     
     /// <summary>
     /// 根据 ID 获取房间
     /// </summary>
-    Room? GetRoom(string roomId);
+    IRoom? GetRoom(string roomId);
     
     /// <summary>
     /// 锁定或解锁房间
     /// </summary>
-    Task SetRoomLockAsync(Room room, bool locked);
+    Task SetRoomLockAsync(IRoom room, bool locked);
     
     /// <summary>
     /// 设置房间循环模式
     /// </summary>
-    Task SetRoomCycleAsync(Room room, bool cycle);
+    Task SetRoomCycleAsync(IRoom room, bool cycle);
     
     /// <summary>
     /// 关闭房间（踢出所有玩家）
     /// </summary>
-    Task CloseRoomAsync(Room room, string reason = "房间已关闭");
+    Task CloseRoomAsync(IRoom room, string reason = "房间已关闭");
     
     // ===== 用户管理 =====
     
     /// <summary>
     /// 获取所有在线用户
     /// </summary>
-    IEnumerable<User> GetAllUsers();
+    IEnumerable<IUser> GetAllUsers();
     
     /// <summary>
     /// 根据 ID 获取用户
     /// </summary>
-    User? GetUser(int userId);
+    IUser? GetUser(int userId);
     
     /// <summary>
     /// 将用户从房间移除
     /// </summary>
-    Task RemoveUserFromRoomAsync(User user, string reason = "被移出房间");
+    Task RemoveUserFromRoomAsync(IUser user, string reason = "被移出房间");
     
     // ===== 消息发送 =====
     
     /// <summary>
     /// 向房间发送聊天消息
     /// </summary>
-    Task SendRoomMessageAsync(Room room, string message, int senderId = -1);
+    Task SendRoomMessageAsync(IRoom room, string message, int senderId = -1);
     
     /// <summary>
     /// 向用户发送私聊消息
     /// </summary>
-    Task SendPrivateMessageAsync(User user, string message, int senderId = -1);
+    Task SendPrivateMessageAsync(IUser user, string message, int senderId = -1);
     
     /// <summary>
     /// 向所有在线用户广播消息
@@ -70,7 +70,7 @@ public interface IPluginAPI
     Task BroadcastMessageAsync(string message, int senderId = -1);
     
     // ===== 发送任意命令的返回 =====
-    Task SendCommandAsync(User user, ServerCommand cmd);
+    Task SendCommandAsync(IUser user, ServerCommand cmd);
     
     // ===== 服务器状态 =====
     
@@ -111,32 +111,32 @@ public class PluginAPI : IPluginAPI
 
     // ===== 房间管理实现 =====
     
-    public IEnumerable<Room> GetAllRooms()
+    public IEnumerable<IRoom> GetAllRooms()
     {
         return _serverState.Rooms.Values;
     }
 
-    public Room? GetRoom(string roomId)
+    public IRoom? GetRoom(string roomId)
     {
         _serverState.Rooms.TryGetValue(roomId, out var room);
         return room;
     }
 
-    public async Task SetRoomLockAsync(Room room, bool locked)
+    public async Task SetRoomLockAsync(IRoom room, bool locked)
     {
         room.Locked = locked;
         await room.SendAsync(new LockRoomMessage(locked));
         _logger.Debug($"房间 {room.Id} 锁定状态设置为: {locked}");
     }
 
-    public async Task SetRoomCycleAsync(Room room, bool cycle)
+    public async Task SetRoomCycleAsync(IRoom room, bool cycle)
     {
         room.SetCycle(cycle);
         await room.SendAsync(new CycleRoomMessage(cycle));
         _logger.Debug($"房间 {room.Id} 循环模式设置为: {cycle}");
     }
 
-    public async Task CloseRoomAsync(Room room, string reason = "房间已关闭")
+    public async Task CloseRoomAsync(IRoom room, string reason = "房间已关闭")
     {
         var users = room.GetAllUsers().ToList();
         foreach (var user in users)
@@ -148,18 +148,18 @@ public class PluginAPI : IPluginAPI
 
     // ===== 用户管理实现 =====
     
-    public IEnumerable<User> GetAllUsers()
+    public IEnumerable<IUser> GetAllUsers()
     {
         return _serverState.Users.Values;
     }
 
-    public User? GetUser(int userId)
+    public IUser? GetUser(int userId)
     {
         _serverState.Users.TryGetValue(userId, out var user);
         return user;
     }
 
-    public async Task RemoveUserFromRoomAsync(User user, string reason = "被移出房间")
+    public async Task RemoveUserFromRoomAsync(IUser user, string reason = "被移出房间")
     {
         if (user.Room != null)
         {
@@ -175,13 +175,13 @@ public class PluginAPI : IPluginAPI
 
     // ===== 消息发送实现 =====
     
-    public async Task SendRoomMessageAsync(Room room, string message, int senderId = -1)
+    public async Task SendRoomMessageAsync(IRoom room, string message, int senderId = -1)
     {
         await room.SendAsync(new ChatMessage(senderId, message));
         _logger.Debug($"向房间 {room.Id} 发送消息: {message}");
     }
 
-    public async Task SendPrivateMessageAsync(User user, string message, int senderId = -1)
+    public async Task SendPrivateMessageAsync(IUser user, string message, int senderId = -1)
     {
         await user.TrySendAsync(new MessageCommand(new ChatMessage(senderId, message)));
         _logger.Debug($"向用户 {user.Name} 发送私聊: {message}");
@@ -199,7 +199,7 @@ public class PluginAPI : IPluginAPI
     }
     
     // ==== 发送任意命令实现 =====
-    public async Task SendCommandAsync(User user, ServerCommand cmd)
+    public async Task SendCommandAsync(IUser user, ServerCommand cmd)
     {
         await user.TrySendAsync(cmd);
         _logger.Debug($"向用户 {user.Name} 发送命令: {cmd.GetType().Name}");

@@ -1,15 +1,16 @@
-﻿using PhiraMp.Core;
+using PhiraMp.Core;
 using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server;
 
-public class User
+public class User : IUser
 {
     public int Id { get; set; }
     public string Name { get; set; }
     public string Language { get; set; }
     public ServerState Server { get; set; }
     public WeakReference<Session>? SessionRef { get; set; }
+    // 内部使用具体 Room 类型，方便访问 State 等内部属性
     public Room? Room { get; set; }
     public bool IsMonitor { get; set; }
     public float GameTime { get; set; } = float.NegativeInfinity;
@@ -17,6 +18,13 @@ public class User
     private bool _dangling;
 
     private readonly Lock _lock = new();
+
+    // 显式实现 IUser.Room，将内部 Room 暴露为 IRoom 接口
+    IRoom? IUser.Room
+    {
+        get => Room;
+        set => Room = value as Room;
+    }
 
     public User(int id, string name, string language, ServerState server)
     {

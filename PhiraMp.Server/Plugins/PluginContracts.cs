@@ -205,15 +205,15 @@ public class PluginContext
 public class RoomMessageContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>发送消息的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
     /// <summary>消息内容</summary>
     public string Message { get; }
     
-    public RoomMessageContext(Room room, User user, string message)
+    public RoomMessageContext(IRoom room, IUser user, string message)
     {
         Room = room;
         User = user;
@@ -227,12 +227,12 @@ public class RoomMessageContext : BasePipelineContext
 public class RoomStateContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>新状态</summary>
     public string NewState { get; }
     
-    public RoomStateContext(Room room, string newState)
+    public RoomStateContext(IRoom room, string newState)
     {
         Room = room;
         NewState = newState;
@@ -245,12 +245,12 @@ public class RoomStateContext : BasePipelineContext
 public class UserEventContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>用户对象</summary>
-    public User User { get; }
+    public IUser User { get; }
     
-    public UserEventContext(Room room, User user)
+    public UserEventContext(IRoom room, IUser user)
     {
         Room = room;
         User = user;
@@ -263,12 +263,12 @@ public class UserEventContext : BasePipelineContext
 public class RequestStartContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>发起请求的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
-    public RequestStartContext(Room room, User user)
+    public RequestStartContext(IRoom room, IUser user)
     {
         Room = room;
         User = user;
@@ -281,15 +281,15 @@ public class RequestStartContext : BasePipelineContext
 public class SelectChartContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>选歌的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
     /// <summary>选择的谱面信息</summary>
     public ChartInfo Chart { get; }
     
-    public SelectChartContext(Room room, User user, ChartInfo chart)
+    public SelectChartContext(IRoom room, IUser user, ChartInfo chart)
     {
         Room = room;
         User = user;
@@ -303,15 +303,15 @@ public class SelectChartContext : BasePipelineContext
 public class CycleModeChangeContext : BasePipelineContext
 {
     /// <summary>房间对象</summary>
-    public Room Room { get; }
+    public IRoom Room { get; }
     
     /// <summary>操作的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
     /// <summary>是否启用循环模式</summary>
     public bool CycleEnabled { get; }
     
-    public CycleModeChangeContext(Room room, User user, bool cycleEnabled)
+    public CycleModeChangeContext(IRoom room, IUser user, bool cycleEnabled)
     {
         Room = room;
         User = user;
@@ -325,7 +325,7 @@ public class CycleModeChangeContext : BasePipelineContext
 public class JoinRoomRequestContext : BasePipelineContext
 {
     /// <summary>发起请求的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
     /// <summary>房间 ID</summary>
     public RoomId RoomId { get; }
@@ -333,7 +333,7 @@ public class JoinRoomRequestContext : BasePipelineContext
     /// <summary>是否为监视模式</summary>
     public bool Monitor { get; }
     
-    public JoinRoomRequestContext(User user, RoomId roomId, bool monitor)
+    public JoinRoomRequestContext(IUser user, RoomId roomId, bool monitor)
     {
         User = user;
         RoomId = roomId;
@@ -347,12 +347,12 @@ public class JoinRoomRequestContext : BasePipelineContext
 public class CreateRoomRequestContext : BasePipelineContext
 {
     /// <summary>发起请求的用户</summary>
-    public User User { get; }
+    public IUser User { get; }
     
     /// <summary>请求创建的房间 ID</summary>
     public RoomId RoomId { get; }
     
-    public CreateRoomRequestContext(User user, RoomId roomId)
+    public CreateRoomRequestContext(IUser user, RoomId roomId)
     {
         User = user;
         RoomId = roomId;
@@ -387,7 +387,7 @@ public class AuthenticationContext : BasePipelineContext
 public class UserConnectContext : BasePipelineContext
 {
     /// <summary>连接的用户对象</summary>
-    public User User { get; }
+    public IUser User { get; }
 
     /// <summary>当前会话 ID</summary>
     public Guid SessionId { get; }
@@ -395,7 +395,7 @@ public class UserConnectContext : BasePipelineContext
     /// <summary>是否为重新连接（true = 断线重连，false = 首次连接）</summary>
     public bool IsReconnect { get; }
 
-    public UserConnectContext(User user, Guid sessionId, bool isReconnect)
+    public UserConnectContext(IUser user, Guid sessionId, bool isReconnect)
     {
         User = user;
         SessionId = sessionId;
@@ -409,9 +409,9 @@ public class UserConnectContext : BasePipelineContext
 public class UserDisconnectContext : BasePipelineContext
 {
     /// <summary>断开连接的用户对象</summary>
-    public User User { get; }
+    public IUser User { get; }
 
-    public UserDisconnectContext(User user)
+    public UserDisconnectContext(IUser user)
     {
         User = user;
     }

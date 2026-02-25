@@ -82,7 +82,7 @@ public class ConsoleCommandDemoPlugin : IPluginModule, IConsoleCommandHandler
                 {
                     _context?.Logger.Info($"=== 房间详情: {roomId} ===");
                     _context?.Logger.Info($"房主: {room.Host.Name} (ID: {room.Host.Id.ToString()})");
-                    _context?.Logger.Info($"状态: {room.State.GetType().Name}");
+                    _context?.Logger.Info($"状态: {room.GetClientRoomState().State}");
                     _context?.Logger.Info($"直播模式: {room.Live}");
                     _context?.Logger.Info($"锁定: {room.Locked}");
                     _context?.Logger.Info($"循环模式: {room.Cycle}");

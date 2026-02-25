@@ -329,7 +329,7 @@ public class PluginManager : IDisposable
     /// 分发房间消息到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchRoomMessageAsync(Room room, User user, string message)
+    public async Task<bool> DispatchRoomMessageAsync(IRoom room, IUser user, string message)
     {
         if (MessageHandlers == null) return false;
 
@@ -344,7 +344,7 @@ public class PluginManager : IDisposable
     /// 分发房间状态变化到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchRoomStateChangeAsync(Room room, string newState)
+    public async Task<bool> DispatchRoomStateChangeAsync(IRoom room, string newState)
     {
         if (StateHandlers == null) return false;
 
@@ -359,7 +359,7 @@ public class PluginManager : IDisposable
     /// 分发用户加入到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchUserJoinAsync(Room room, User user)
+    public async Task<bool> DispatchUserJoinAsync(IRoom room, IUser user)
     {
         if (UserJoinHandlers == null) return false;
 
@@ -374,7 +374,7 @@ public class PluginManager : IDisposable
     /// 分发用户离开到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchUserLeaveAsync(Room room, User user)
+    public async Task<bool> DispatchUserLeaveAsync(IRoom room, IUser user)
     {
         if (UserLeaveHandlers == null) return false;
 
@@ -389,7 +389,7 @@ public class PluginManager : IDisposable
     /// 分发游戏开始请求到所有处理器 - 插件可以抛出异常来阻止开始
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchRequestStartAsync(Room room, User user)
+    public async Task<bool> DispatchRequestStartAsync(IRoom room, IUser user)
     {
         if (RequestStartHandlers == null) return false;
 
@@ -404,7 +404,7 @@ public class PluginManager : IDisposable
     /// 分发选歌到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchSelectChartAsync(Room room, User user, ChartInfo chart)
+    public async Task<bool> DispatchSelectChartAsync(IRoom room, IUser user, ChartInfo chart)
     {
         if (SelectChartHandlers == null) return false;
 
@@ -419,7 +419,7 @@ public class PluginManager : IDisposable
     /// 分发循环模式变化到所有处理器
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchCycleModeChangeAsync(Room room, User user, bool cycleEnabled)
+    public async Task<bool> DispatchCycleModeChangeAsync(IRoom room, IUser user, bool cycleEnabled)
     {
         if (CycleModeChangeHandlers == null) return false;
 
@@ -434,7 +434,7 @@ public class PluginManager : IDisposable
     /// 分发加入房间请求到所有处理器 - 插件可以修改目标房间或抛出异常阻止
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchJoinRoomRequestAsync(User user, RoomId roomId, bool monitor)
+    public async Task<bool> DispatchJoinRoomRequestAsync(IUser user, RoomId roomId, bool monitor)
     {
         if (JoinRoomRequestHandlers == null) return false;
 
@@ -449,7 +449,7 @@ public class PluginManager : IDisposable
     /// 分发创建房间请求到所有处理器 - 插件可以抛出异常阻止创建
     /// </summary>
     /// <returns>如果插件已处理返回 true，否则返回 false</returns>
-    public async Task<bool> DispatchCreateRoomRequestAsync(User user, RoomId roomId)
+    public async Task<bool> DispatchCreateRoomRequestAsync(IUser user, RoomId roomId)
     {
         if (CreateRoomRequestHandlers == null) return false;
 
@@ -481,7 +481,7 @@ public class PluginManager : IDisposable
     /// <summary>
     /// 分发用户连接到所有处理器 - 用户完成鉴权后触发，插件可抛出异常拒绝连接
     /// </summary>
-    public async Task DispatchUserConnectAsync(User user, Guid sessionId, bool isReconnect)
+    public async Task DispatchUserConnectAsync(IUser user, Guid sessionId, bool isReconnect)
     {
         if (UserConnectHandlers == null) return;
 
@@ -495,7 +495,7 @@ public class PluginManager : IDisposable
     /// <summary>
     /// 分发用户断开连接到所有处理器 - 重连超时后彻底离线时触发
     /// </summary>
-    public async Task DispatchUserDisconnectAsync(User user)
+    public async Task DispatchUserDisconnectAsync(IUser user)
     {
         if (UserDisconnectHandlers == null) return;
 

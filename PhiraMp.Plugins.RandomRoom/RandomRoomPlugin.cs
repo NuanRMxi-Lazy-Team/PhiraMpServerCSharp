@@ -1,7 +1,5 @@
 using System.ComponentModel.Composition;
 using PhiraMp.Core;
-using PhiraMp.Server;
-using PhiraMp.Server.Models;
 using PhiraMp.Server.Plugins;
 
 namespace PhiraMp.Plugins.RandomRoom;
@@ -86,7 +84,8 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             // 3. 房间名不是保留名称
             // 4. 房间未满
             var availableRooms = allRooms.Where(r =>
-                r is { Locked: false, State: InternalRoomState.SelectChart } &&
+                !r.Locked &&
+                r.GetClientRoomState().State == RoomState.SelectChart &&
                 !_reservedRoomNames.Contains(r.Id.Value) &&
                 r.GetAllUsers().Count < _context.ServerState.Config.RoomMaxPlayers
             ).ToList();
@@ -111,7 +110,7 @@ public class RandomRoomPlugin : IPluginModule, IJoinRoomRequestHandler, ICreateR
             if (context.Monitor && !randomRoom.Live)
             {
                 randomRoom.Live = true;
-                Logger.Info($"Room {context.RoomId.Value} goes live");
+                _logger.Info($"Room {context.RoomId.Value} goes live");
             }
             
             await randomRoom.BroadcastAsync(new OnJoinRoomCommand(context.User.ToInfo()));
