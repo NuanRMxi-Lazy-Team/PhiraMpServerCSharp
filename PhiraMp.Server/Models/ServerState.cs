@@ -1,4 +1,4 @@
-﻿﻿using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Threading.Channels;
 using PhiraMp.Server.Console;
 using PhiraMp.Server.Plugins;

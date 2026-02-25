@@ -5,14 +5,6 @@ using PhiraMp.Server.Console;
 
 namespace PhiraMp.Server;
 
-public enum LogLevel
-{
-    Debug,
-    Info,
-    Warning,
-    Error
-}
-
 /// <summary>
 /// High-performance logging system with batching and minimal allocations
 /// </summary>

@@ -3,7 +3,7 @@ using PhiraMp.Server.Models;
 
 namespace PhiraMp.Server;
 
-public class Room
+public class Room : IRoom
 {
     public RoomId Id { get; }
     public User Host { get; set; }
@@ -18,6 +18,9 @@ public class Room
     private readonly object _lock = new();
     private readonly int _maxUsers;
     private readonly ServerState? _serverState;
+
+    // 显式实现 IRoom.Host，将内部 User 暴露为 IUser
+    IUser IRoom.Host => Host;
 
     public Room(RoomId id, User host, int maxUsers = 8, ServerState? serverState = null)
     {
@@ -47,6 +50,32 @@ public class Room
         // Plugins can override this behavior
         CheckHost(user);
     }
+
+    // ===== IRoom 接口显式实现（接受 IUser，内部转为 User）=====
+
+    bool IRoom.IsHost(IUser user) => Host.Id == user.Id;
+
+    void IRoom.CheckHost(IUser user)
+    {
+        if (Host.Id != user.Id)
+            throw new Exception("Only host can do this");
+    }
+
+    void IRoom.CheckCanSelectChart(IUser user)
+    {
+        if (Host.Id != user.Id)
+            throw new Exception("Only host can do this");
+    }
+
+    Task<bool> IRoom.OnUserLeaveAsync(IUser user) => OnUserLeaveAsync((User)user);
+
+    bool IRoom.AddUser(IUser user, bool monitor) => AddUser((User)user, monitor);
+
+    Task IRoom.SendAsAsync(IUser user, string content) => SendAsAsync((User)user, content);
+
+    List<IUser> IRoom.GetUsers() => GetUsers().Cast<IUser>().ToList();
+    List<IUser> IRoom.GetMonitors() => GetMonitors().Cast<IUser>().ToList();
+    List<IUser> IRoom.GetAllUsers() => GetAllUsers().Cast<IUser>().ToList();
 
     public RoomStateData GetClientRoomState()
     {
