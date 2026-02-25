@@ -16,6 +16,8 @@
     <PackageReference Include="System.ComponentModel.Composition" Version="10.0.3" />
     <!-- 引用PhiraMp.Core -->
     <ProjectReference Include="..\PhiraMp.Core\PhiraMp.Core.csproj" />
+    <!-- 引用PhiraMp.Network（网络层） -->
+    <ProjectReference Include="..\PhiraMp.Network\PhiraMp.Network.csproj" />
   </ItemGroup>
 
 </Project>

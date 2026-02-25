@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using PhiraMp.Network;
 using PhiraMp.Server.Console;
 using PhiraMp.Server.Models;
 using PhiraMp.Server.Plugins;
@@ -80,13 +81,21 @@ public class PhiraMpServer : IDisposable
 
         try
         {
-            var session = await Session.CreateAsync(sessionId, client, _state);
+            // 先创建 Session 对象（尚未绑定网络层），以便 ClientStream 的 handler 能够引用它
+            var session = Session.Create(sessionId, _state);
 
-            Logger.Info($"Received connection from {endpoint} ({sessionId}), version: {session.Stream.Version}");
+            // 创建网络流，handler 委托引用已创建的 session
+            var stream = new ClientStream(client, cmd => session.HandleCommandAsync(cmd));
+
+            // 将网络会话注入逻辑层，同时启动心跳监测
+            session.SetNetworkSession(stream);
+
+            Logger.Info($"Received connection from {endpoint} ({sessionId}), version: {stream.Version}");
 
             _state.Sessions[sessionId] = session;
 
             // Session will run until disconnected
+            await Task.CompletedTask;
         }
         catch (Exception ex)
         {

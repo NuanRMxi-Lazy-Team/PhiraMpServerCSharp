@@ -1,6 +1,6 @@
-﻿using System.Net.Sockets;
+using System.Net.Sockets;
 
-namespace PhiraMp.Server;
+namespace PhiraMp.Network;
 
 /// <summary>
 /// Helper class for handling network disconnection exceptions

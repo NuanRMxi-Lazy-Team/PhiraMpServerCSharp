@@ -1,6 +1,5 @@
 using System.Collections.Concurrent;
 using System.Net.Http.Json;
-using System.Net.Sockets;
 using PhiraMp.Core;
 using PhiraMp.Server.Models;
 
@@ -21,37 +20,36 @@ public class Session : IDisposable
     private const int HttpTimeoutSeconds = 10;
 
     public Guid Id { get; }
-    public ClientStream Stream { get; private set; } = null!;
+    public INetworkSession Stream { get; private set; } = null!;
     public User User { get; private set; } = null!;
     public ServerState Server { get; }
     private readonly CancellationTokenSource _cts;
-    private readonly Task _monitorTask;
+    private Task _monitorTask = Task.CompletedTask;
     private bool _authenticated;
     private bool _disposed;
 
-    private Session(Guid id, ClientStream stream, ServerState server)
+    private Session(Guid id, ServerState server)
     {
         Id = id;
-        Stream = stream;
         Server = server;
         _cts = new CancellationTokenSource();
-        _monitorTask = Task.Run(MonitorHeartbeat);
     }
 
-    public static async Task<Session> CreateAsync(
-        Guid id,
-        TcpClient client,
-        ServerState server)
+    /// <summary>
+    /// 创建尚未绑定网络会话的 Session 对象，需随后调用 SetNetworkSession
+    /// </summary>
+    public static Session Create(Guid id, ServerState server)
     {
-        var session = new Session(id, null!, server);
+        return new Session(id, server);
+    }
 
-        var stream = new ClientStream(
-            client,
-            cmd => session.HandleCommandAsync(cmd));
-
-        typeof(Session).GetProperty(nameof(Stream))!.SetValue(session, stream);
-        await Task.CompletedTask;
-        return session;
+    /// <summary>
+    /// 绑定底层网络会话，并启动心跳监测任务
+    /// </summary>
+    public void SetNetworkSession(INetworkSession networkSession)
+    {
+        Stream = networkSession;
+        _monitorTask = Task.Run(MonitorHeartbeat);
     }
 
     private static HttpClient CreateSharedHttpClient()
@@ -143,7 +141,7 @@ public class Session : IDisposable
         }
     }
 
-    private async Task<ServerCommand?> HandleCommandAsync(ClientCommand cmd)
+    internal async Task<ServerCommand?> HandleCommandAsync(ClientCommand cmd)
     {
         try
         {
