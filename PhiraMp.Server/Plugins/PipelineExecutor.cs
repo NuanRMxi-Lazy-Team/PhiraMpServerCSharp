@@ -1,41 +1,6 @@
 namespace PhiraMp.Server.Plugins;
 
 /// <summary>
-/// 管线上下文接口 - 所有管线处理器的上下文都应该实现此接口
-/// 支持提前返回和结果传递
-/// </summary>
-public interface IPipelineContext
-{
-    /// <summary>
-    /// 标记此请求是否已被处理（已处理则停止管线）
-    /// </summary>
-    bool IsHandled { get; set; }
-    
-    /// <summary>
-    /// 处理结果（可选）
-    /// </summary>
-    object? Result { get; set; }
-}
-
-/// <summary>
-/// 管线处理器接口 - 泛型接口，支持不同类型的上下文
-/// </summary>
-/// <typeparam name="TContext">上下文类型</typeparam>
-public interface IPipelineHandler<in TContext> where TContext : IPipelineContext
-{
-    /// <summary>
-    /// 处理器优先级（数字越小优先级越高，优先执行）
-    /// 默认优先级为 100
-    /// </summary>
-    int Priority => 100;
-    
-    /// <summary>
-    /// 处理管线上下文
-    /// </summary>
-    Task HandleAsync(TContext context);
-}
-
-/// <summary>
 /// 管线执行器 - 负责按优先级顺序执行处理器
 /// </summary>
 public class PipelineExecutor
@@ -107,16 +72,4 @@ public class PipelineExecutor
             }
         }
     }
-}
-
-/// <summary>
-/// 基础管线上下文 - 提供默认实现
-/// </summary>
-public abstract class BasePipelineContext : IPipelineContext
-{
-    /// <inheritdoc/>
-    public bool IsHandled { get; set; }
-    
-    /// <inheritdoc/>
-    public object? Result { get; set; }
 }
