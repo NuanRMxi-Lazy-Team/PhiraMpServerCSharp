@@ -6,4 +6,5 @@
 public class PluginConfig
 {
     public List<string> Motds = [];
+    public string ServerName = string.Empty;
 }

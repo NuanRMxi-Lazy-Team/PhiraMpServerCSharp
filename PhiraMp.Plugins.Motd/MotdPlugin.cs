@@ -11,7 +11,7 @@ public class MotdPlugin : IPluginModule, IUserConnectHandler
     private IPluginAPI _api = null!;
     private PluginContext _context = null!;
     private IPluginConfig _config = null!;
-    private List<string> _motds = [];
+    private PluginConfig _pluginConfig = null!;
     
     public async Task InitializeAsync(PluginContext context)
     {
@@ -22,12 +22,12 @@ public class MotdPlugin : IPluginModule, IUserConnectHandler
         // 定义配置类
         var defaultConfig = new PluginConfig()
         {
-            Motds = ["欢迎回来！", "您吃了吗？", "饿了的话吃完再来玩吧！"],
+            Motds = ["欢迎回到{serverName}！", "{userName}吃了吗？", "饿了的话吃完再来玩吧！还有{playerCount}个小伙伴等着你呢！"],
+            ServerName = "undefined",
         };
         // 加载或创建配置
-        var config = await _config.LoadAsync("motd.yml", defaultConfig);
-        _motds = config.Motds;
-        _logger.Info($"Motds loaded: {string.Join(", ", _motds)}");
+        _pluginConfig = await _config.LoadAsync("motd.yml", defaultConfig);
+        _logger.Info($"Motds loaded: {string.Join(", ", _pluginConfig.Motds)}");
     }
 
     public async Task ShutdownAsync()
@@ -39,9 +39,15 @@ public class MotdPlugin : IPluginModule, IUserConnectHandler
     {
         if (!context.IsReconnect)
         {
-            foreach (var motd in _motds)
+            foreach (var motd in _pluginConfig.Motds)
             {
-                await _api.SendPrivateMessageAsync(context.User, motd);
+                // userName
+                var personalizedMotd = motd.Replace("{userName}", context.User.Name);
+                // serverName
+                personalizedMotd = personalizedMotd.Replace("{serverName}", _pluginConfig.ServerName);
+                // playerCount
+                personalizedMotd  = personalizedMotd.Replace("{playerCount}", _api.GetAllUsers().Count().ToString());
+                await _api.SendPrivateMessageAsync(context.User, personalizedMotd);
             }
         }
     }
